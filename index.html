@@ -238,6 +238,18 @@
   }
 
   .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:10px;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;}
+
+  /* 截交线判型 */
+  .crit{
+    margin-top:8px;padding:8px 10px 9px;border:1px solid var(--line-soft);border-radius:8px;
+    background:rgba(122,160,214,.025);
+  }
+  .crit .c-head{display:flex;align-items:baseline;gap:8px;margin-bottom:4px;}
+  .crit .c-head span{font-size:9px;letter-spacing:.14em;color:var(--faint);}
+  .crit .c-head b{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--gold-hi);letter-spacing:.05em;}
+  .crit p{font-size:9.5px;line-height:1.62;color:var(--dim);letter-spacing:.01em;}
+  .crit p+p{margin-top:3px;}
+  .crit p.size{font-family:var(--mono);font-size:9px;color:var(--gold-dim);}
   .stat{padding:8px 6px;text-align:center;border-right:1px solid var(--line-soft);}
   .stat:last-child{border-right:none;}
   .stat b{display:block;font-family:var(--mono);font-size:15px;color:var(--gold-hi);font-weight:500;letter-spacing:.02em;}
@@ -586,6 +598,12 @@
         <div class="stat"><b id="stVerts">6</b><span>顶点数 n</span></div>
       </div>
 
+      <div class="crit">
+        <div class="c-head"><span>截交线判型</span><b id="critName">正六边形</b></div>
+        <p id="critRule">截平面与 6 个面相交</p>
+        <p class="size" id="critSize">边长 0.71 · 内角 120.0°</p>
+      </div>
+
       <div class="sec-head" style="margin-top:14px"><h3>视角</h3><span>CAMERA</span></div>
       <div class="seg" id="viewSeg">
         <button data-cam="iso" class="on">立体</button>
@@ -867,6 +885,248 @@ const BASE = {
 /* =========================================================
    3. 截面求解
    ========================================================= */
+/* 回转体尺寸（与 buildSolid 保持一致） */
+const CYL  = {r:0.94, h:1.14};                       // 半径、半高
+const CONE = {r:1.06, h:0.86, apex:1.28};            // 底半径、底 z、顶点 z
+CONE.H = CONE.apex + CONE.h;                         // 锥高
+CONE.alpha = Math.atan(CONE.r/CONE.H);               // 半顶角
+const SPH  = {R:1.42};
+const APEX_EPS = 1.8e-2;   // 过锥顶判定容差（受滑杆步长限制）
+
+/* 平面内求截面边界：从内点向各方向二分，截面是凸域，
+   与回转面参数化无关，不会在渐近线 / 极点处断链，端面补出的直边也自动包含在内 */
+function radialSection(key, n, d){
+  const {u,w}=planeBasis(n), O=V.mul(n,d);
+  const ox=O[0],oy=O[1],oz=O[2];
+  const ux=u[0],uy=u[1],uz=u[2], wx=w[0],wy=w[1],wz=w[2];
+  const cyl=(key==='cylinder'), cone=(key==='cone'), sph=(key==='sphere');
+
+  const inAt=(x,y)=>{
+    const px=ox+ux*x+wx*y, py=oy+uy*x+wy*y, pz=oz+uz*x+wz*y;
+    if(cyl) return px*px+py*py<=CYL.r*CYL.r+1e-12 && Math.abs(pz)<=CYL.h+1e-12;
+    if(sph) return px*px+py*py+pz*pz<=SPH.R*SPH.R+1e-12;
+    if(cone){
+      const {r,h,apex,H}=CONE;
+      if(pz<-h-1e-12 || pz>apex+1e-12) return false;
+      const rr=r*(apex-pz)/H;
+      return px*px+py*py<=rr*rr+1e-12;
+    }
+    return false;
+  };
+
+  // 内点：取平面内落在实体中的采样点的重心，尽量远离边界，避免细长截面退化
+  let sx=0, sy=0, cnt=0;
+  const G=34, span=1.7;
+  for(let i=0;i<=G;i++){
+    for(let j=0;j<=G;j++){
+      const x=-span+2*span*i/G, y=-span+2*span*j/G;
+      if(inAt(x,y)){ sx+=x; sy+=y; cnt++; }
+    }
+  }
+  if(!cnt) return null;
+  const cx=sx/cnt, cy=sy/cnt;
+  if(!inAt(cx,cy)) return null;
+
+  const N=256, pts=[];
+  for(let i=0;i<N;i++){
+    const a=2*Math.PI*i/N, dx=Math.cos(a), dy=Math.sin(a);
+    let lo=0, hi=3.4;
+    for(let it=0;it<26;it++){
+      const m=(lo+hi)/2;
+      if(inAt(cx+dx*m, cy+dy*m)) lo=m; else hi=m;
+    }
+    if(lo<1e-5) return null;
+    const x=cx+dx*lo, y=cy+dy*lo;
+    pts.push([ox+ux*x+wx*y, oy+uy*x+wy*y, oz+uz*x+wz*y]);
+  }
+  return pts;
+}
+
+function cylCurve(n,d){
+  const {r,h}=CYL, nz=n[2];
+  // 与轴线平行：截面为矩形（两条素线 + 上下底上的两条直线），四角精确
+  if(Math.abs(nz)<1e-3){
+    const nl=Math.hypot(n[0],n[1]); if(nl<1e-9) return null;
+    const dist=d/nl;
+    if(Math.abs(dist)>r-1e-9) return null;
+    const half=Math.sqrt(Math.max(0,r*r-dist*dist));
+    const cx=n[0]/nl*dist, cy=n[1]/nl*dist, px=-n[1]/nl, py=n[0]/nl;
+    const A=[cx+px*half, cy+py*half], B=[cx-px*half, cy-py*half];
+    return [[A[0],A[1],-h],[A[0],A[1],h],[B[0],B[1],h],[B[0],B[1],-h]];
+  }
+  return radialSection('cylinder', n, d);
+}
+
+function coneCurve(n,d){
+  const {r,h,apex}=CONE;
+  // 过顶点：三角形（两条素线 + 底圆弦）
+  if(Math.abs(V.dot(n,[0,0,apex])-d) < APEX_EPS){
+    const rhs=d+n[2]*h, nl=Math.hypot(n[0],n[1]);
+    if(nl<1e-9) return null;
+    const dist=rhs/nl;
+    if(Math.abs(dist)>=r-1e-9) return [[0,0,apex]];
+    const half=Math.sqrt(r*r-dist*dist);
+    const cx=n[0]/nl*dist, cy=n[1]/nl*dist, px=-n[1]/nl, py=n[0]/nl;
+    return [[0,0,apex],[cx+px*half,cy+py*half,-h],[cx-px*half,cy-py*half,-h]];
+  }
+  return radialSection('cone', n, d);
+}
+
+function analyticCurve(key, n, d){
+  if(key==='sphere'){
+    const r2=SPH.R*SPH.R-d*d;
+    if(r2<=1e-6) return null;
+    const r=Math.sqrt(r2), {u,w}=planeBasis(n), O=V.mul(n,d), pts=[], N=180;
+    for(let i=0;i<N;i++){
+      const a=2*Math.PI*i/N;
+      pts.push(V.add(O, V.add(V.mul(u,r*Math.cos(a)), V.mul(w,r*Math.sin(a)))));
+    }
+    return pts;
+  }
+  if(key==='cylinder') return cylCurve(n,d);
+  if(key==='cone') return coneCurve(n,d);
+  return null;
+}
+
+/* 截交线是否被端面截断 */
+function isTruncated(key, pts){
+  if(key==='cylinder'){
+    return pts.some(p=>Math.abs(Math.abs(p[2])-CYL.h)<2e-3);
+  }
+  if(key==='cone'){
+    return pts.some(p=>Math.abs(p[2]+CONE.h)<2e-3);
+  }
+  return false;
+}
+
+function polyMetrics(p2){
+  let a=0,p=0;
+  for(let i=0;i<p2.length;i++){
+    const q=p2[i], r2=p2[(i+1)%p2.length];
+    a += q[0]*r2[1]-r2[0]*q[1];
+    p += Math.hypot(r2[0]-q[0], r2[1]-q[1]);
+  }
+  return {area:Math.abs(a)/2, perim:p};
+}
+
+/* 主轴：协方差定方向，再取该方向上的支撑长度（对截断曲线同样成立） */
+function principalAxes(p2){
+  const n=p2.length;
+  let cx=0,cy=0;
+  for(const q of p2){ cx+=q[0]; cy+=q[1]; }
+  cx/=n; cy/=n;
+  let sxx=0,syy=0,sxy=0;
+  for(const q of p2){ const dx=q[0]-cx, dy=q[1]-cy; sxx+=dx*dx; syy+=dy*dy; sxy+=dx*dy; }
+  sxx/=n; syy/=n; sxy/=n;
+  const th=0.5*Math.atan2(2*sxy, sxx-syy);
+  const d1=[Math.cos(th),Math.sin(th)], d2=[-Math.sin(th),Math.cos(th)];
+  const ext=dir=>{
+    let mn=Infinity,mx=-Infinity,pmn=p2[0],pmx=p2[0];
+    for(const q of p2){
+      const t=(q[0]-cx)*dir[0]+(q[1]-cy)*dir[1];
+      if(t<mn){ mn=t; pmn=q; }
+      if(t>mx){ mx=t; pmx=q; }
+    }
+    return {len:mx-mn,pmin:pmn,pmax:pmx};
+  };
+  const e1=ext(d1), e2=ext(d2);
+  const [A,B] = e1.len>=e2.len ? [e1,e2] : [e2,e1];
+  return {cx,cy, major:A, minor:B};
+}
+
+/* ---------- 截交线判型 ---------- */
+function polyInfo(sec){
+  const p=sec.pts, n=p.length, lens=[], angs=[];
+  for(let i=0;i<n;i++){
+    const a=p[i], b=p[(i+1)%n], c=p[(i+2)%n];
+    lens.push(V.len(V.sub(b,a)));
+    const u1=V.norm(V.sub(a,b)), u2=V.norm(V.sub(c,b));
+    angs.push(Math.acos(clamp(V.dot(u1,u2),-1,1))/DEG);
+  }
+  const lmin=Math.min(...lens), lmax=Math.max(...lens);
+  const amin=Math.min(...angs), amax=Math.max(...angs);
+  const regular=(lmax-lmin)/Math.max(lmax,1e-6)<0.055 && (amax-amin)<5;
+  return {regular, lmin, lmax, amin, amax, ang:angs.reduce((s,v)=>s+v,0)/n};
+}
+
+function classifySection(solid, plane, sec){
+  const n=plane.n, d=plane.d;
+  const none={name:'无截面', rule:'平面已移出立体范围，试着减小偏移 h', size:'—'};
+  if(!sec || sec.pts.length<3) return none;
+  const ax=sec.axes;
+
+  if(solid.key==='sphere'){
+    const r=Math.sqrt(Math.max(0,SPH.R*SPH.R-d*d));
+    return {
+      name:'圆',
+      rule:`球心到平面距离 |h| = ${Math.abs(d).toFixed(2)} < 半径 R = ${SPH.R}，无论怎么切都是圆`,
+      size:`半径 r = √(R² − h²) = ${r.toFixed(2)} · 直径 ${(2*r).toFixed(2)}`
+    };
+  }
+
+  if(solid.key==='cylinder'){
+    const nz=Math.abs(n[2])/V.len(n);
+    const beta=Math.asin(clamp(nz,0,1))/DEG;      // 截平面与轴线夹角
+    if(nz<1e-4){
+      return {name:'矩形',
+        rule:'截平面平行于轴线（β = 0°）→ 截交线是两条素线加两条端面直线',
+        size:`边长 ${ax.minor.len.toFixed(2)} × ${ax.major.len.toFixed(2)}`};
+    }
+    if(nz>0.9995){
+      return {name:'圆',
+        rule:'截平面垂直于轴线（β = 90°）→ 截交线为圆',
+        size:`直径 ${ax.major.len.toFixed(2)}`};
+    }
+    const e=Math.sqrt(Math.max(0,1-Math.pow(ax.minor.len/ax.major.len,2)));
+    if(sec.truncated){
+      return {name:'椭圆（被端面截断）',
+        rule:`β = ${beta.toFixed(1)}°，斜截圆柱；椭圆超出柱高，端面上补一段直线`,
+        size:`长轴 ${ax.major.len.toFixed(2)} · 短轴 ${ax.minor.len.toFixed(2)}`};
+    }
+    return {name:'椭圆',
+      rule:`β = ${beta.toFixed(1)}°，0° < β < 90°，斜截圆柱 → 椭圆`,
+      size:`长轴 2a = ${ax.major.len.toFixed(2)} · 短轴 2b = ${ax.minor.len.toFixed(2)} · 离心率 e = ${e.toFixed(2)}`};
+  }
+
+  if(solid.key==='cone'){
+    const nz=Math.abs(n[2])/V.len(n);
+    const beta=Math.asin(clamp(nz,0,1))/DEG;      // 截平面与轴线夹角
+    const alpha=CONE.alpha/DEG;
+    const throughApex=Math.abs(V.dot(n,[0,0,CONE.apex])-d)<APEX_EPS;
+    if(throughApex){
+      return {name:'三角形',
+        rule:'截平面过锥顶 → 截交线为两条素线加一段底圆弦',
+        size:`底边 ${ax.major.len.toFixed(2)} · 高 ${ax.minor.len.toFixed(2)}`};
+    }
+    if(beta>89.5){
+      return {name:'圆', rule:'β = 90°，截平面垂直于轴线 → 圆',
+        size:`直径 ${ax.major.len.toFixed(2)}`};
+    }
+    let name, why;
+    if(beta>alpha+0.4){ name='椭圆'; why=`β = ${beta.toFixed(1)}° > 半顶角 α = ${alpha.toFixed(1)}°`; }
+    else if(beta>alpha-0.4){ name='抛物线'; why=`β = ${beta.toFixed(1)}° ≈ 半顶角 α = ${alpha.toFixed(1)}°，截平面平行于一条素线`; }
+    else { name='双曲线'; why=`β = ${beta.toFixed(1)}° < 半顶角 α = ${alpha.toFixed(1)}°，截平面与上下两个锥面相交`; }
+    if(sec.truncated){
+      return {name:name+'（被底面截断）',
+        rule:`${why}；圆锥有限，曲线到锥底被截断，底面上补一段弦`,
+        size:`跨距 ${ax.major.len.toFixed(2)} × ${ax.minor.len.toFixed(2)}`};
+    }
+    return {name,
+      rule:why,
+      size:`${name==='椭圆'?'长轴':'跨距'} ${ax.major.len.toFixed(2)} · ${name==='椭圆'?'短轴':'宽'} ${ax.minor.len.toFixed(2)}`};
+  }
+
+  // 多面体
+  const info=polyInfo(sec);
+  const nm=sectionName(sec);
+  return {
+    name:nm,
+    rule:`截平面与 ${sec.pts.length} 个面相交，截交线是 ${cnNum(sec.pts.length)} 条线段的闭合折线`,
+    size: info.regular
+      ? `边长 ${info.lmin.toFixed(2)} · 内角 ${info.ang.toFixed(1)}°`
+      : `边长 ${info.lmin.toFixed(2)}–${info.lmax.toFixed(2)} · 内角 ${info.amin.toFixed(1)}°–${info.amax.toFixed(1)}°`
+  };
+}
 function planeOf(state){
   const th = state.tilt*DEG, ph = state.azim*DEG;
   const n = [Math.sin(th)*Math.cos(ph), Math.sin(th)*Math.sin(ph), Math.cos(th)];
@@ -896,17 +1156,18 @@ function solveSection(solid, plane){
   const {u,w} = planeBasis(n);
   const O = V.mul(n,d);
 
-  // 球：解析圆
-  if(solid.key==='sphere'){
-    const R=1.42, r2 = R*R - d*d;
-    if(r2 <= 1e-6) return {pts:[], area:0, perim:0, circle:0};
-    const r = Math.sqrt(r2), pts=[], N=96;
-    for(let i=0;i<N;i++){
-      const a=2*Math.PI*i/N;
-      pts.push(V.add(O, V.add(V.mul(u,r*Math.cos(a)), V.mul(w,r*Math.sin(a)))));
-    }
-    return {pts, area:Math.PI*r2, perim:2*Math.PI*r, circle:r, u, w, O};
+  // —— 回转体：解析截交线
+  const curvePts = analyticCurve(solid.key, n, d);
+  if(curvePts && curvePts.length>=3){
+    const p2 = curvePts.map(p=>[V.dot(V.sub(p,O),u), V.dot(V.sub(p,O),w)]);
+    const {area,perim} = polyMetrics(p2);
+    const axes = principalAxes(p2);
+    const circle = (solid.key==='sphere' && area>1e-6) ? Math.sqrt(area/Math.PI) : 0;
+    return {pts:curvePts, area, perim, circle, u, w, O, curve:true, p2, axes,
+            closed:true, truncated:isTruncated(solid.key, curvePts)};
   }
+  if(solid.key==='sphere'||solid.key==='cylinder'||solid.key==='cone')
+    return {pts:[], area:0, perim:0, curve:true};
 
   const raw=[];
   for(const e of solid.edges){
@@ -972,13 +1233,13 @@ function sectionName(sec){
    4. 状态
    ========================================================= */
 const state = {
-  type:'cube', density:12,
+  type:'cube', density:24,
   tilt:54.7, azim:45, off:0,
   yaw:52, pitch:21, dist:6.4,
   showEdges:true, showPlane:true,
   auto:false, compare:false
 };
-let solid = null, section = null;
+let solid = null, section = null, lastCls = null;
 let compareSec = null;
 let saved = [];
 let dirty = true;
@@ -1026,14 +1287,14 @@ function resize(){
 }
 
 /* 坐标轴避让：控制条浮在画布上时，把它让开；手机上控制条在画布外则用固定边距 */
-let AXIS_PAD = 92;
+let AXIS_PAD = 108;
 function measureAxisPad(vr){
-  AXIS_PAD = 92;
+  AXIS_PAD = 108;
   const bar = document.querySelector('.plane-bar');
   if(!bar) return;
   const br = bar.getBoundingClientRect();
   const overlap = vr.bottom - br.top;
-  if(overlap > 16) AXIS_PAD = overlap + 26;
+  if(overlap > 16) AXIS_PAD = overlap + 44;
 }
 
 function drawAmbient(ctx,w,h){
@@ -1187,8 +1448,18 @@ function render(){
     ctx.lineWidth=1.5;
     ctx.stroke();
 
-    // 顶点标记
-    if(section.pts.length<=160 && !section.circle){
+    // 顶点 / 截交线特征点
+    if(section.curve && section.axes){
+      const ax=section.axes, {O,u,w}=section;
+      const fp=[ax.major.pmax, ax.major.pmin, ax.minor.pmax, ax.minor.pmin];
+      for(const q of fp){
+        const P3=V.add(O, V.add(V.mul(u,q[0]), V.mul(w,q[1])));
+        const s=proj(cam,P3);
+        ctx.beginPath(); ctx.arc(s.x,s.y,3.4,0,Math.PI*2);
+        ctx.fillStyle='rgba(9,16,28,.6)'; ctx.fill();
+        ctx.strokeStyle='rgba(248,235,205,.95)'; ctx.lineWidth=1.5; ctx.stroke();
+      }
+    } else if(section.pts.length<=160 && !section.circle){
       for(const p of sp){
         ctx.fillStyle='rgba(248,235,205,.95)';
         ctx.fillRect(p.x-1.8,p.y-1.8,3.6,3.6);
@@ -1272,12 +1543,33 @@ function drawThumb(){
   tctx.lineWidth=1.4;
   tctx.stroke();
 
-  // 顶点
-  xs.forEach((x,i)=>{
-    const [px,py]=map(x,ys[i]);
-    tctx.fillStyle='rgba(248,235,205,.9)';
-    tctx.fillRect(px-1.5,py-1.5,3,3);
-  });
+  // 顶点 / 特征点
+  if(section.curve && section.axes){
+    const ax=section.axes;
+    const line=(p,q)=>{
+      const a=map(p[0],p[1]), b=map(q[0],q[1]);
+      tctx.beginPath(); tctx.moveTo(a[0],a[1]); tctx.lineTo(b[0],b[1]); tctx.stroke();
+    };
+    tctx.save();
+    tctx.setLineDash([3,3]);
+    tctx.strokeStyle='rgba(217,185,120,.45)';
+    tctx.lineWidth=1;
+    line(ax.major.pmax, ax.major.pmin);
+    line(ax.minor.pmax, ax.minor.pmin);
+    tctx.restore();
+    for(const q of [ax.major.pmax, ax.major.pmin, ax.minor.pmax, ax.minor.pmin]){
+      const [px,py]=map(q[0],q[1]);
+      tctx.beginPath(); tctx.arc(px,py,2.9,0,Math.PI*2);
+      tctx.fillStyle='rgba(8,13,22,.75)'; tctx.fill();
+      tctx.strokeStyle='rgba(248,235,205,.9)'; tctx.lineWidth=1.2; tctx.stroke();
+    }
+  } else {
+    xs.forEach((x,i)=>{
+      const [px,py]=map(x,ys[i]);
+      tctx.fillStyle='rgba(248,235,205,.9)';
+      tctx.fillRect(px-1.5,py-1.5,3,3);
+    });
+  }
 
   // 中心十字
   tctx.strokeStyle='rgba(217,185,120,.16)';
@@ -1352,7 +1644,7 @@ function setSolid(key, resetPlane){
   const densOn = (key==='cylinder'||key==='cone');
   document.getElementById('density').disabled = !densOn;
   document.getElementById('densHint').textContent = densOn
-    ? '细分面数越多，越接近真实曲面；越少越像棱柱 / 棱锥。'
+    ? '只影响侧面轮廓的细分程度；截交线按解析曲线求解，不随此值变化。'
     : '多面体使用精确平面，密度滑杆仅对圆柱 / 圆锥生效。';
 
   if(resetPlane!==false){
@@ -1384,12 +1676,17 @@ function refresh(){
   document.getElementById('shapeMeta').textContent=meta;
 
   const hasSection = section.pts.length>2;
-  document.getElementById('secName').textContent = hasSection ? sectionName(section) : '无截面';
+  const cls = classifySection(solid, plane, section);
+  document.getElementById('secName').textContent = hasSection ? cls.name : '无截面';
   document.getElementById('secLive').textContent = hasSection?'LIVE':'IDLE';
   document.getElementById('secLive').classList.toggle('idle',!hasSection);
   document.getElementById('stPerimeter').textContent = hasSection?section.perim.toFixed(2):'—';
   document.getElementById('stArea').textContent = hasSection?section.area.toFixed(2):'—';
-  document.getElementById('stVerts').textContent = hasSection?(section.circle?'∞':section.pts.length):'—';
+  document.getElementById('stVerts').textContent = hasSection?(section.curve?'∞':section.pts.length):'—';
+  lastCls = cls;
+  document.getElementById('critName').textContent = cls.name;
+  document.getElementById('critRule').textContent = cls.rule;
+  document.getElementById('critSize').textContent = cls.size;
 
   // 平面法向提示
   const n = plane.n;
@@ -1399,10 +1696,13 @@ function refresh(){
   document.getElementById('eqLine').textContent =
     `${n[0].toFixed(2)}x + ${n[1].toFixed(2)}y + ${n[2].toFixed(2)}z = ${plane.d.toFixed(2)}`;
 
-  if(hasSection && section.pts.length===3) document.getElementById('footNote').textContent='当前截面为三角形，三个顶点落在立体的三条棱上。';
-  else if(section.circle) document.getElementById('footNote').textContent='球被平面所截，截面恒为圆，半径 r = √(R² − d²)。';
-  else if(hasSection) document.getElementById('footNote').textContent='截面顶点均为平面与立体棱的交点，按真实尺度计算周长与面积。';
-  else document.getElementById('footNote').textContent='平面已移出立体范围，试着减小偏移 h。';
+  if(!hasSection) document.getElementById('footNote').textContent='平面已移出立体范围，试着减小偏移 h。';
+  else if(solid.key==='sphere') document.getElementById('footNote').textContent='球被平面所截，截面恒为圆，半径 r = √(R² − h²)。';
+  else if(section.curve) document.getElementById('footNote').textContent= section.truncated
+    ? '截交线由解析曲线与端面交线拼接而成，按真实尺度计算周长与面积。'
+    : '截交线为解析曲线（非折线近似），按真实尺度计算周长与面积。';
+  else if(!section.curve && section.pts.length===3) document.getElementById('footNote').textContent='当前截面为三角形，三个顶点落在立体的三条棱上。';
+  else document.getElementById('footNote').textContent='截交线各顶点均为平面与立体棱的交点，按真实尺度计算周长与面积。';
 
   drawThumb();
   markDirty();
@@ -1543,7 +1843,7 @@ function addSaved(){
   if(!section || section.pts.length<3) return;
   if(saved.length>=8) saved.shift();
   saved.push({
-    name:sectionName(section),
+    name: lastCls ? lastCls.name : sectionName(section),
     perim:section.perim, area:section.area, n:section.pts.length,
     tilt:state.tilt, azim:state.azim, off:state.off, type:state.type
   });
