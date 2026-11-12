@@ -131,16 +131,6 @@
   input[type=range]:disabled::-webkit-slider-thumb{background:#33415a;box-shadow:none;}
   .hint{font-size:10px;line-height:1.55;color:var(--faint);margin-top:5px;}
 
-  /* ---------- presets ---------- */
-  .preset{
-    border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px;margin-bottom:6px;
-    cursor:pointer;transition:.18s;background:rgba(122,160,214,.02);
-  }
-  .preset:hover{border-color:rgba(217,185,120,.4);background:rgba(217,185,120,.05);}
-  .preset b{display:block;font-size:11px;font-weight:500;color:#c3d0e2;letter-spacing:.02em;}
-  .preset:hover b{color:var(--gold-hi);}
-  .preset span{display:block;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:3px;letter-spacing:.06em;}
-
   .eq-box{
     border:1px solid var(--line-soft);border-radius:8px;padding:9px 10px;
     background:rgba(122,160,214,.025);
@@ -376,8 +366,6 @@
     .sec-head h3{font-size:12.5px;}
     .sec-head em,.sec-head span{font-size:9px;}
     .solid-btn i{font-size:10px;}
-    .preset b{font-size:12px;}
-    .preset span{font-size:9.5px;}
     .eq-box code{font-size:11.5px;}
     .eq-box p,.hint,.panel-note,.foot-note,.empty-note{font-size:10.5px;}
     .saved-item .nm{font-size:11.5px;}
@@ -402,7 +390,7 @@
 
   /* ================= 触摸设备：放大可点区域 ================= */
   @media (hover:none),(pointer:coarse){
-    .chip,.seg button,.row2 button,.tab-btn,.gold-btn,.auto-btn,.preset,
+    .chip,.seg button,.row2 button,.tab-btn,.gold-btn,.auto-btn,
     .saved-item,.solid-btn,.ghost-btn{touch-action:manipulation;}
     .chip{height:34px;padding:0 12px;font-size:11.5px;}
     .seg button{height:40px;font-size:12px;}
@@ -410,7 +398,6 @@
     .tab-btn{height:34px;font-size:11.5px;}
     .panel-foot{padding:8px;}
     .gold-btn{height:44px;font-size:12.5px;}
-    .preset{padding:11px 12px;}
     .saved-item{padding:10px 8px;}
     .saved-item .del{opacity:.75;font-size:15px;padding:0 4px;}
     .section-card{border-radius:10px;}
@@ -523,9 +510,6 @@
           <p class="hint" id="faceHint">只作用于棱柱 / 棱锥，改变底面正多边形的边数。</p>
         </div>
       </div>
-
-      <div class="sec-head" style="margin-top:14px"><h3>推荐实验</h3><span>EXPERIMENTS</span></div>
-      <div id="presets"></div>
 
       <div class="sec-head" style="margin-top:14px"><h3>平面方程</h3><span>PLANE EQ.</span></div>
       <div class="eq-box">
@@ -1658,24 +1642,6 @@ function buildUI(){
 
   document.querySelectorAll('.solid-btn').forEach(b=>{
     b.onclick=()=>{ setSolid(b.dataset.solid); };
-  });
-
-  const presets=[
-    {t:'看一切正方体的截面', s:'cube',     tilt:54.7, azim:45, off:0,   tag:'正方体 · 正六边形'},
-    {t:'把圆柱切出椭圆',     s:'cylinder', tilt:52,   azim:0,  off:0,   tag:'圆柱 · 斜切'},
-    {t:'与斜切的圆锥对谈',   s:'cone',     tilt:58,   azim:20, off:0.18,tag:'圆锥 · 椭圆 / 双曲线'},
-    {t:'斜切正六棱柱',       s:'prism',    tilt:58,   azim:30, off:0,   tag:'棱柱 · 截面仍是多边形', faces:6}
-  ];
-  const pbox=document.getElementById('presets');
-  pbox.innerHTML = presets.map((p,i)=>`<div class="preset" data-i="${i}"><b>${p.t}</b><span>${p.tag}</span></div>`).join('');
-  pbox.querySelectorAll('.preset').forEach(el=>{
-    el.onclick=()=>{
-      const p=presets[+el.dataset.i];
-      if(p.faces) state.faces=p.faces;
-      setSolid(p.s, false);
-      state.tilt=p.tilt; state.azim=p.azim; state.off=p.off;
-      syncSliders(); refresh();
-    };
   });
 }
 
