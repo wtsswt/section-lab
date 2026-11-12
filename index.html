@@ -89,7 +89,29 @@
 
   /* ---------- solid grid ---------- */
   .solid-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
-  .hidden-block{display:none;}
+  .hidden-block{display:none !important;}
+  /* ---------- 模式切换 ---------- */
+  .mode-seg{
+    display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 14px;padding:4px;
+    border:1px solid var(--line-soft);border-radius:9px;background:rgba(122,160,214,.02);
+  }
+  .mode-seg button{
+    height:30px;border:0;border-radius:6px;background:transparent;color:var(--dim);
+    font-family:inherit;font-size:11px;letter-spacing:.08em;cursor:pointer;transition:.18s;
+  }
+  .mode-seg button:hover{color:var(--gold-dim);}
+  .mode-seg button.on{
+    background:rgba(217,185,120,.15);color:var(--gold-hi);font-weight:500;
+    box-shadow:inset 0 0 0 1px rgba(217,185,120,.22);
+  }
+  .solid-grid.duo{grid-template-columns:repeat(2,1fr);}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
+  .split .kv{
+    border:1px solid var(--line-soft);border-radius:7px;padding:6px 8px;
+    background:rgba(122,160,214,.02);
+  }
+  .split .kv span{display:block;font-size:8.5px;letter-spacing:.08em;color:var(--faint);}
+  .split .kv b{display:block;font-family:var(--mono);font-size:11.5px;color:#cfdcee;font-weight:500;margin-top:2px;}
   .solid-btn{
     position:relative;aspect-ratio:1/1.06;border:1px solid var(--line-soft);border-radius:8px;
     background:rgba(122,160,214,.025);display:flex;flex-direction:column;align-items:center;
@@ -500,21 +522,57 @@
   <!-- ============ LEFT ============ -->
   <aside class="panel">
     <div class="panel-scroll">
-      <div class="sec-head"><h3>选择立体</h3><span>10 SOLIDS</span></div>
-      <div class="solid-grid" id="solidGrid"></div>
+      <div class="mode-seg" id="modeSeg">
+        <button data-mode="section" class="on">截交线</button>
+        <button data-mode="pierce">相贯线</button>
+      </div>
 
-      <div id="faceWrap" class="hidden-block">
-        <div class="sec-head" style="margin-top:16px"><h3>底面棱数</h3><em id="faceVal">6</em></div>
-        <div class="slider-row" style="margin-top:0">
-          <input type="range" id="faces" min="3" max="16" step="1" value="6">
-          <p class="hint" id="faceHint">只作用于棱柱 / 棱锥，改变底面正多边形的边数。</p>
+      <div id="solidWrap">
+        <div class="sec-head"><h3>选择立体</h3><span>10 SOLIDS</span></div>
+        <div class="solid-grid" id="solidGrid"></div>
+
+        <div id="faceWrap" class="hidden-block">
+          <div class="sec-head" style="margin-top:16px"><h3>底面棱数</h3><em id="faceVal">6</em></div>
+          <div class="slider-row" style="margin-top:0">
+            <input type="range" id="faces" min="3" max="16" step="1" value="6">
+            <p class="hint" id="faceHint">只作用于棱柱 / 棱锥，改变底面正多边形的边数。</p>
+          </div>
         </div>
       </div>
 
-      <div class="sec-head" style="margin-top:14px"><h3>平面方程</h3><span>PLANE EQ.</span></div>
-      <div class="eq-box">
-        <code id="eqLine">0.58x + 0.58y + 0.58z = 0.00</code>
-        <p>法向由倾角 θ 与方位 φ 决定，偏移 h 沿法向平移平面。</p>
+      <div id="planeWrap">
+        <div class="sec-head" style="margin-top:14px"><h3>平面方程</h3><span>PLANE EQ.</span></div>
+        <div class="eq-box">
+          <code id="eqLine">0.58x + 0.58y + 0.58z = 0.00</code>
+          <p>法向由倾角 θ 与方位 φ 决定，偏移 h 沿法向平移平面。</p>
+        </div>
+      </div>
+
+      <div id="pipePanel" class="hidden-block">
+        <div class="sec-head"><h3>主体</h3><span>MAIN SOLID</span></div>
+        <div class="split">
+          <div class="kv"><span>形状</span><b>竖直圆柱</b></div>
+          <div class="kv"><span>半径 R₁</span><b>1.00</b></div>
+        </div>
+
+        <div class="sec-head" style="margin-top:16px"><h3>从体</h3><span>CROSS SOLID</span></div>
+        <div class="solid-grid duo" id="pipeGrid"></div>
+
+        <div class="sec-head" style="margin-top:14px"><h3>从体半径 R₂</h3><em id="pipeRVal">0.62</em></div>
+        <div class="slider-row" style="margin-top:0">
+          <input type="range" id="pipeR" min="0.30" max="1.55" step="0.01" value="0.62">
+        </div>
+
+        <div class="sec-head" style="margin-top:12px"><h3>轴线高度 z₀</h3><em id="pipeZVal">0.00</em></div>
+        <div class="slider-row" style="margin-top:0">
+          <input type="range" id="pipeZ" min="-0.85" max="0.85" step="0.01" value="0">
+        </div>
+
+        <div class="sec-head" style="margin-top:12px"><h3>轴线偏距 e</h3><em id="pipeEVal">0.00</em></div>
+        <div class="slider-row" style="margin-top:0">
+          <input type="range" id="pipeE" min="0" max="0.60" step="0.01" value="0">
+        </div>
+        <p class="hint" id="pipeHint">从体轴线沿 x 方向，与主体轴线在 z₀ 高度相交。</p>
       </div>
     </div>
 
@@ -569,6 +627,7 @@
   <!-- ============ RIGHT ============ -->
   <aside class="panel">
     <div class="panel-scroll">
+      <div id="secViewWrap">
       <div class="sec-head"><h3>截面视图</h3><span>SECTION VIEW</span></div>
       <div class="section-card">
         <div class="sc-head">
@@ -590,6 +649,27 @@
         <p id="critRule">截平面与 6 个面相交</p>
         <p class="size" id="critSize">边长 0.71 · 内角 120.0°</p>
       </div>
+      </div>
+
+      <div id="pipeRight" class="hidden-block">
+        <div class="sec-head"><h3>相贯线判型</h3><span>INTERSECTION</span></div>
+        <div class="crit">
+          <div class="c-head"><span>相贯线</span><b id="pcName">空间曲线</b></div>
+          <p id="pcRule">两圆柱不等径正交</p>
+          <p class="size" id="pcSize">z 范围 ±0.62</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><b id="pcBranches">2</b><span>交线支数</span></div>
+          <div class="stat"><b id="pcSpan">1.24</b><span>z 跨度</span></div>
+          <div class="stat"><b id="pcPts">—</b><span>采样点</span></div>
+        </div>
+
+        <div class="sec-head" style="margin-top:14px"><h3>作图要点</h3><span>KEY POINTS</span></div>
+        <div class="crit" style="border-color:rgba(122,160,214,.18)">
+          <p id="pcNote">相贯线上的最高点、最低点是转向轮廓线上的点，作图时先求出它们再连曲线。</p>
+        </div>
+      </div>
 
       <div class="sec-head" style="margin-top:14px"><h3>视角</h3><span>CAMERA</span></div>
       <div class="seg" id="viewSeg">
@@ -602,10 +682,12 @@
         <button id="btnCompare">对比截面</button>
       </div>
 
+      <div id="secStoreWrap">
       <div class="sec-head" style="margin-top:14px"><h3>剖面存储</h3><em id="savedCount">0 / 8</em></div>
       <div id="savedList"></div>
       <button class="gold-btn" id="btnSheet">生成三视图</button>
       <p class="foot-note" id="footNote">按第一角投影绘制主视 / 侧视 / 俯视图，比例 1:1。</p>
+      </div>
     </div>
   </aside>
 </div>
@@ -1262,7 +1344,7 @@ function sectionName(sec){
    4. 状态
    ========================================================= */
 const state = {
-  type:'cube', faces:6,
+  type:'cube', faces:6, mode:'section',
   tilt:54.7, azim:45, off:0,
   yaw:52, pitch:21, dist:6.4,
   showEdges:true, showPlane:true,
@@ -1294,6 +1376,384 @@ function proj(cam,p){
   const z=V.dot(q,cam.f);
   const k=cam.focal/Math.max(z,0.05);
   return {x:cam.cx+V.dot(q,cam.r)*k, y:cam.cy-V.dot(q,cam.u)*k, z};
+}
+
+/* =========================================================
+   5.5 相贯线（两立体表面的交线）
+   ========================================================= */
+const PIPE_A = { R:1.00, H:1.55 };                       // 主体：竖直圆柱，轴为 z 轴
+const pipe   = { type:'cylinder', R:0.62, z0:0, e:0, L:1.55 };
+let pipeCurves = [];                                     // [{pts, closed}]
+let pipeFeat   = [];                                     // [{p, label}]
+
+/* 从体表面参数化：(u,v) → 世界坐标。圆柱轴沿 x，球心在 (0,e,z0) */
+function pipePoint(u,v){
+  const c=Math.cos(u), s=Math.sin(u);
+  if(pipe.type==='sphere'){
+    const sv=Math.sin(v), cv=Math.cos(v);
+    return [pipe.R*sv*c, pipe.e+pipe.R*sv*s, pipe.z0+pipe.R*cv];
+  }
+  return [v, pipe.e+pipe.R*c, pipe.z0+pipe.R*s];
+}
+function pipeVRange(){ return pipe.type==='sphere' ? [0,Math.PI] : [-pipe.L, pipe.L]; }
+
+/* 主体隐函数：竖直圆柱侧面 */
+function pipeF(p){ return p[0]*p[0] + p[1]*p[1] - PIPE_A.R*PIPE_A.R; }
+
+/* 从体表面外法向 */
+function pipeNormal(p){
+  if(pipe.type==='sphere'){
+    return V.norm([p[0], p[1]-pipe.e, p[2]-pipe.z0]);
+  }
+  const dy=p[1]-pipe.e, dz=p[2]-pipe.z0, r=Math.hypot(dy,dz)||1;
+  return [0, dy/r, dz/r];
+}
+
+/* 求交：在从体参数域的 (u,v) 网格上做 marching squares 取 f=0 等值线 */
+function solvePierce(){
+  const nu=192, nv=(pipe.type==='sphere'?88:112);
+  const [v0,v1]=pipeVRange();
+  const g=[];
+  for(let i=0;i<=nu;i++){
+    g[i]=[];
+    for(let j=0;j<=nv;j++) g[i][j]=pipeF(pipePoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv));
+  }
+
+  const nodes=new Map();
+  const pAt=(i,j)=>pipePoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv);
+  function nodeAt(kind,i,j){
+    // v 边的下标 i 要按 nu 取模，否则 u=0 与 u=2π 会被当成两条不同的边，曲线在此断开
+    const key=(kind==='h'?'h':'v')+(kind==='v'?(i%nu):i)+'_'+j;
+    let nd=nodes.get(key);
+    if(nd) return nd;
+    const g1=g[i][j], g2=(kind==='h'?g[i+1][j]:g[i][j+1]);
+    const den=g1-g2;
+    const t=Math.abs(den)<1e-12 ? 0.5 : g1/den;
+    const p1=pAt(i,j), p2=(kind==='h'?pAt(i+1,j):pAt(i,j+1));
+    nd={p:[p1[0]+(p2[0]-p1[0])*t, p1[1]+(p2[1]-p1[1])*t, p1[2]+(p2[2]-p1[2])*t], nb:[]};
+    nodes.set(key,nd);
+    return nd;
+  }
+  const TBL={
+    1:[[0,3]], 2:[[0,1]], 3:[[1,3]], 4:[[1,2]],
+    5:[[0,1],[2,3]], 6:[[0,2]], 7:[[2,3]], 8:[[2,3]],
+    9:[[0,2]], 10:[[0,3],[1,2]], 11:[[1,2]], 12:[[1,3]],
+    13:[[0,1]], 14:[[0,3]]
+  };
+  const link=(a,b)=>{ a.nb.push(b); b.nb.push(a); };
+  for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){
+    const a=g[i][j], b=g[i+1][j], c=g[i+1][j+1], d=g[i][j+1];
+    let idx=0;
+    if(a>0) idx|=1; if(b>0) idx|=2; if(c>0) idx|=4; if(d>0) idx|=8;
+    const tbl=TBL[idx];
+    if(!tbl) continue;
+    const E=[()=>nodeAt('h',i,j), ()=>nodeAt('v',i+1,j), ()=>nodeAt('h',i,j+1), ()=>nodeAt('v',i,j)];
+    for(const [e1,e2] of tbl) link(E[e1](), E[e2]());
+  }
+
+  const curves=[], seen=new Set();
+  for(const nd of nodes.values()){
+    if(seen.has(nd) || !nd.nb.length) continue;
+    const seq=[nd]; seen.add(nd);
+    let cur=nd, prev=null;
+    while(true){
+      const cand=cur.nb.filter(x=>x!==prev);
+      const nxt=cand.find(x=>!seen.has(x));
+      if(!nxt){
+        if(cand.includes(seq[0]) && seq.length>3) seq.push(seq[0]);
+        break;
+      }
+      seen.add(nxt); seq.push(nxt); prev=cur; cur=nxt;
+    }
+    if(seq.length>3) curves.push(seq.map(x=>x.p));
+  }
+  curves.sort((a,b)=>b.length-a.length);
+  pipeCurves = curves.map(pts=>{
+    const f=pts[0], l=pts[pts.length-1];
+    return {pts, closed:Math.hypot(f[0]-l[0],f[1]-l[1],f[2]-l[2])<1e-6};
+  });
+  collectPipeFeatures();
+}
+
+/* 特征点：每支曲线的最高 / 最低点（转向轮廓线上的点） */
+function collectPipeFeatures(){
+  pipeFeat=[];
+  for(const c of pipeCurves){
+    let hi=c.pts[0], lo=c.pts[0];
+    for(const p of c.pts){ if(p[2]>hi[2]) hi=p; if(p[2]<lo[2]) lo=p; }
+    pipeFeat.push({p:hi, kind:'hi'});
+    pipeFeat.push({p:lo, kind:'lo'});
+  }
+}
+
+/* 相贯线上一点是否可见：p 处两块表面都必须朝向相机 */
+function pipeVisible(p, cam){
+  const v=V.sub(cam.eye,p);
+  const nA=[p[0],p[1],0];
+  if(V.dot(nA,v)<=0) return false;
+  return V.dot(pipeNormal(p), v)>0;
+}
+
+/* ---------- 立体绘制 ---------- */
+function tubeFrame(axis){
+  const a=V.norm(axis);
+  const helper = Math.abs(a[2])<0.9 ? [0,0,1] : [1,0,0];
+  const e1=V.norm(V.cross(helper,a));
+  const e2=V.cross(a,e1);
+  return {a,e1,e2};
+}
+
+/* 实体内点判定：用于在两立体上互相挖孔 */
+function insideA(p){
+  return p[0]*p[0]+p[1]*p[1] < PIPE_A.R*PIPE_A.R && Math.abs(p[2]) < PIPE_A.H;
+}
+function insideB(p){
+  if(pipe.type==='sphere'){
+    const dx=p[0], dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+    return dx*dx+dy*dy+dz*dz < pipe.R*pipe.R;
+  }
+  const dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+  return dy*dy+dz*dz < pipe.R*pipe.R && Math.abs(p[0]) < pipe.L;
+}
+
+const TINT_A={front:'rgba(74,114,180,.30)', back:'rgba(40,66,110,.13)', rim:'rgba(150,184,230,.62)'};
+const TINT_B={front:'rgba(206,176,122,.07)', back:'rgba(180,142,84,.03)', rim:'rgba(206,176,122,.34)'};
+
+function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
+  const {a,e1,e2}=tubeFrame(axis);
+  const ring=(t,s)=>{
+    const c=Math.cos(t), sn=Math.sin(t);
+    return [center[0]+R*(c*e1[0]+sn*e2[0])+a[0]*s,
+            center[1]+R*(c*e1[1]+sn*e2[1])+a[1]*s,
+            center[2]+R*(c*e1[2]+sn*e2[2])+a[2]*s];
+  };
+  const face=[], quads=[], PT=[];
+  for(let i=0;i<N;i++){
+    const t0=2*Math.PI*i/N, t1=2*Math.PI*(i+1)/N, tm=(t0+t1)/2;
+    const nrm=[Math.cos(tm)*e1[0]+Math.sin(tm)*e2[0],
+               Math.cos(tm)*e1[1]+Math.sin(tm)*e2[1],
+               Math.cos(tm)*e1[2]+Math.sin(tm)*e2[2]];
+    const probe=ring(tm,0);
+    const f=V.dot(nrm, V.sub(cam.eye,probe))>0;
+    face.push(f);
+    // 轴向再分段：否则一个面片是整条母线长的长条，挖孔会挖掉整条竖带
+    for(let k=0;k<nSeg;k++){
+      const s0=-halfLen+2*halfLen*k/nSeg, s1=-halfLen+2*halfLen*(k+1)/nSeg;
+      const mid=ring(tm,(s0+s1)/2);
+      const P=[proj(cam,ring(t0,s1)),proj(cam,ring(t1,s1)),
+               proj(cam,ring(t1,s0)),proj(cam,ring(t0,s0))];
+      quads.push({pts:P, fill:f?tint.front:tint.back,
+                  z:(P[0].z+P[1].z+P[2].z+P[3].z)/4,
+                  skip: holes ? holes(mid) : false});
+    }
+  }
+  const seams=[];
+  for(let i=0;i<N;i++) if(face[i]!==face[(i+1)%N]) seams.push(2*Math.PI*(i+1)/N);
+  return {quads, seams, ring, tint, holes, halfLen, N};
+}
+
+function ballBundle(cam, center, R, tint, holes){
+  const LA=20, LO=36;
+  const pt=(th,ph)=>[center[0]+R*Math.sin(ph)*Math.cos(th),
+                     center[1]+R*Math.sin(ph)*Math.sin(th),
+                     center[2]+R*Math.cos(ph)];
+  const quads=[];
+  for(let a=0;a<LA;a++){
+    for(let b=0;b<LO;b++){
+      const ph0=Math.PI*a/LA, ph1=Math.PI*(a+1)/LA;
+      const th0=2*Math.PI*b/LO, th1=2*Math.PI*(b+1)/LO;
+      const mid=pt((th0+th1)/2,(ph0+ph1)/2);
+      if(V.dot(V.norm(V.sub(mid,center)), V.sub(cam.eye,mid))<=0) continue;
+      const P=[proj(cam,pt(th0,ph0)),proj(cam,pt(th1,ph0)),
+               proj(cam,pt(th1,ph1)),proj(cam,pt(th0,ph1))];
+      quads.push({pts:P, fill:tint.front,
+                  z:(P[0].z+P[1].z+P[2].z+P[3].z)/4,
+                  skip: holes ? holes(mid) : false});
+    }
+  }
+  return {quads, seams:[], ring:null, tint, holes, halfLen:0, N:0, ball:{center,R}};
+}
+
+function strokeBundle(cam, ctx, bd){
+  if(!bd.ring) return;
+  const {ring, halfLen, N, tint, holes}=bd;
+  ctx.strokeStyle=tint.rim;
+  ctx.lineWidth=1.15;
+  for(const s of [halfLen,-halfLen]){
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){
+      const p=proj(cam,ring(2*Math.PI*i/N, s));
+      i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+  ctx.lineWidth=1.3;
+  const M=48;
+  for(const t of bd.seams){
+    let pen=false;
+    ctx.beginPath();
+    for(let k=0;k<=M;k++){
+      const s=halfLen - 2*halfLen*k/M;
+      const p=ring(t,s);
+      const q=proj(cam,p);
+      if(holes && holes(p)){ pen=false; continue; }
+      if(!pen){ ctx.moveTo(q.x,q.y); pen=true; }
+      else ctx.lineTo(q.x,q.y);
+    }
+    ctx.stroke();
+  }
+}
+
+/* 相贯线：逐段判可见性，可见实线、不可见虚线 */
+function drawPierceCurves(cam, ctx){
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  for(const c of pipeCurves){
+    const pts=c.pts;
+    let mode=null, started=false;
+    for(let k=0;k<pts.length-1;k++){
+      const a=pts[k], b=pts[k+1];
+      const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
+      const vis=pipeVisible(mid,cam);
+      const pa=proj(cam,a), pb=proj(cam,b);
+      if(vis!==mode){
+        if(started) ctx.stroke();
+        ctx.beginPath();
+        ctx.setLineDash(vis?[]:[4,4.5]);
+        ctx.strokeStyle = vis ? 'rgba(255,238,196,.98)' : 'rgba(217,185,120,.50)';
+        ctx.lineWidth = vis ? 2.3 : 1.25;
+        ctx.shadowBlur = vis ? 7 : 0;
+        ctx.shadowColor = 'rgba(240,205,130,.75)';
+        ctx.moveTo(pa.x,pa.y);
+        mode=vis; started=true;
+      }
+      ctx.lineTo(pb.x,pb.y);
+    }
+    if(started) ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur=0;
+  }
+  for(const f of pipeFeat){
+    const q=proj(cam,f.p);
+    const vis=pipeVisible(f.p,cam);
+    ctx.beginPath();
+    ctx.arc(q.x,q.y,3.1,0,Math.PI*2);
+    ctx.fillStyle='rgba(9,16,28,.75)'; ctx.fill();
+    ctx.strokeStyle=vis?'rgba(248,235,205,.95)':'rgba(217,185,120,.45)';
+    ctx.lineWidth=1.4; ctx.stroke();
+  }
+}
+
+function renderPierce(ctx){
+  const cam=makeCam(W,H);
+  const A=tubeBundle(cam,[0,0,0],[0,0,1],PIPE_A.R,PIPE_A.H,64,22,TINT_A, insideB);
+  const B=(pipe.type==='sphere')
+    ? ballBundle(cam,[0,pipe.e,pipe.z0],pipe.R,TINT_B, insideA)
+    : tubeBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,48,18,TINT_B, null);
+
+  // 两个立体的面片统一按深度排序，遮挡关系才正确；主体上被从体占住的面片挖空成孔
+  const all=A.quads.concat(B.quads).sort((u,v)=>v.z-u.z);
+  for(const q of all){
+    if(q.skip) continue;
+    ctx.beginPath();
+    q.pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle=q.fill;
+    ctx.fill();
+  }
+  strokeBundle(cam,ctx,A);
+  strokeBundle(cam,ctx,B);
+  drawPierceCurves(cam,ctx);
+  drawAxis(ctx,cam);
+}
+
+/* 相贯线判型 */
+function classifyPierce(){
+  const R1=PIPE_A.R, R2=pipe.R;
+  const branches=pipeCurves.length;
+  if(!branches){
+    const why = pipe.type==='sphere' && R2<=R1
+      ? `球半径 R₂ = ${R2.toFixed(2)} ≤ 主体圆柱半径 R₁ = ${R1.toFixed(2)}，球整个含在圆柱内，两表面不相交`
+      : '当前参数下两立体表面没有公共点';
+    return {name:'无相贯线', rule:why, size:'—', note:'调整从体半径或轴线位置，让两个表面真正相交。'};
+  }
+  let zmin=Infinity, zmax=-Infinity, total=0;
+  for(const c of pipeCurves) for(const p of c.pts){
+    if(p[2]<zmin) zmin=p[2];
+    if(p[2]>zmax) zmax=p[2];
+    total++;
+  }
+  const span=zmax-zmin;
+  const eq=Math.abs(R2-R1)<0.02;
+  const centered=Math.abs(pipe.e)<0.02;
+
+  if(pipe.type==='sphere'){
+    if(centered){
+      const h=Math.sqrt(Math.max(0,R2*R2-R1*R1));
+      return {
+        name:'两个圆',
+        rule:`球心落在圆柱轴线上，两曲面同轴 → 相贯线是两个相互平行的圆，所在平面 z = z₀ ± √(R₂² − R₁²) = ${(pipe.z0-h).toFixed(2)} 与 ${(pipe.z0+h).toFixed(2)}`,
+        size:`圆半径等于主体半径 R₁ = ${R1.toFixed(2)} · 圆的直径 ${(2*R1).toFixed(2)}`,
+        note:'同轴相贯是唯一能得到平面曲线的情形，此时相贯线在俯视图上就是那个圆。'
+      };
+    }
+    return {
+      name:`${branches===1?'一条':'两条'}闭合空间曲线`,
+      rule:`球心偏离圆柱轴线（e = ${pipe.e.toFixed(2)}），两曲面不同轴 → 相贯线不再是平面曲线；${branches===1?'两段曲线在球面上相接，合并成一条非对称的闭合曲线':'两支闭合的空间曲线彼此分离'}`,
+      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)}`,
+      note:'球心一旦偏离轴线，相贯线立刻失去对称性；作图需先求各支的最高、最低点。'
+    };
+  }
+
+  if(!centered){
+    return {
+      name:'一条闭合空间曲线',
+      rule:'两圆柱轴线偏交（e ≠ 0，两轴线不相交）→ 两条交线在此处相接，合并为一条非对称的闭合曲线',
+      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)}`,
+      note:'偏交时相贯线左右不对称，不能再用对称性省一半作图。'
+    };
+  }
+  if(eq){
+    return {
+      name:'两条平面曲线',
+      rule:`两圆柱直径相等（R₁ = R₂ = ${R1.toFixed(2)}）且轴线正交相交 → 相贯线落在两个对称平面内，是两条椭圆；在轴线所决定的投影面上，它们的投影退化为两条相交直线`,
+      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)}`,
+      note:'等径正交是相贯线的特例：教材里说的「两条相交直线」指的是投影，空间中是两条平面曲线（椭圆）。'
+    };
+  }
+  return {
+    name:'两条闭合空间曲线',
+    rule:`两圆柱不等径正交（R₂ = ${R2.toFixed(2)} < R₁ = ${R1.toFixed(2)}）→ 水平圆柱从主体一侧进、另一侧出，各留下一个孔，孔口边界就是两条空间曲线；曲线总是弯向大圆柱的轴线`,
+    size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)} · 采样点 ${total}`,
+    note:'四条转向轮廓线上的点是作图起点：先定最高点、最低点和左右最宽处，再连光滑曲线。'
+  };
+}
+
+function refreshPierce(){
+  solvePierce();
+  document.querySelectorAll('[data-pipe]').forEach(b=>{
+    b.classList.toggle('on', b.dataset.pipe===pipe.type);
+  });
+  const cls=classifyPierce();
+  document.getElementById('pcName').textContent=cls.name;
+  document.getElementById('pcRule').textContent=cls.rule;
+  document.getElementById('pcSize').textContent=cls.size;
+  document.getElementById('pcNote').textContent=cls.note;
+
+  document.getElementById('pcBranches').textContent=pipeCurves.length||'—';
+  let zmin=Infinity,zmax=-Infinity,total=0;
+  for(const c of pipeCurves) for(const p of c.pts){ if(p[2]<zmin)zmin=p[2]; if(p[2]>zmax)zmax=p[2]; total++; }
+  document.getElementById('pcSpan').textContent=pipeCurves.length?(zmax-zmin).toFixed(2):'—';
+  document.getElementById('pcPts').textContent=total||'—';
+
+  const geo = pipe.type==='sphere' ? '球' : '圆柱';
+  document.getElementById('shapeName').textContent=`圆柱 ∩ ${geo}`;
+  document.getElementById('shapeKicker').textContent = pipe.type==='sphere'
+    ? 'INTERSECTION · CYLINDER × SPHERE' : 'INTERSECTION · CYLINDER × CYLINDER';
+  document.getElementById('shapeMeta').textContent =
+    `主体 R₁ ${PIPE_A.R.toFixed(2)} · 从体 R₂ ${pipe.R.toFixed(2)} · z₀ ${pipe.z0.toFixed(2)} · e ${pipe.e.toFixed(2)}`;
+
+  markDirty();
 }
 
 /* =========================================================
@@ -1372,6 +1832,7 @@ function render(){
   const ctx=vctx;
   ctx.clearRect(0,0,W,H);
   drawAmbient(ctx,W,H);
+  if(state.mode==='pierce'){ renderPierce(ctx); return; }
   if(!solid) return;
 
   const cam = makeCam(W,H);
@@ -1659,6 +2120,80 @@ function syncSliders(){
 /* =========================================================
    9. 状态刷新
    ========================================================= */
+/* ---------- 相贯线面板 ---------- */
+function buildPipeUI(){
+  const box=document.getElementById('pipeGrid');
+  box.innerHTML = [['cylinder','圆柱'],['sphere','球']].map(([k,label])=>`
+    <button class="solid-btn${pipe.type===k?' on':''}" data-pipe="${k}">
+      <svg viewBox="0 0 24 24">${ICONS[k]}</svg>
+      <i>${label}</i>
+    </button>`).join('');
+  box.querySelectorAll('.solid-btn').forEach(b=>{
+    b.classList.toggle('on', b.dataset.pipe===pipe.type);
+    b.onclick=()=>setPipeType(b.dataset.pipe);
+  });
+
+  document.getElementById('modeSeg').querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>switchMode(b.dataset.mode);
+  });
+
+  ['pipeR','pipeZ','pipeE'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.addEventListener('input',()=>{
+      if(id==='pipeR') pipe.R=+el.value;
+      if(id==='pipeZ') pipe.z0=+el.value;
+      if(id==='pipeE') pipe.e=+el.value;
+      document.getElementById('pipeRVal').textContent=pipe.R.toFixed(2);
+      document.getElementById('pipeZVal').textContent=pipe.z0.toFixed(2);
+      document.getElementById('pipeEVal').textContent=pipe.e.toFixed(2);
+      refreshPierce();
+    });
+  });
+}
+
+function setPipeType(t){
+  pipe.type=t;
+  pipe.R = (t==='sphere') ? 1.25 : 0.62;
+  const r=document.getElementById('pipeR');
+  r.value=pipe.R;
+  document.getElementById('pipeRVal').textContent=pipe.R.toFixed(2);
+  document.getElementById('pipeGrid').querySelectorAll('.solid-btn').forEach(b=>{
+    b.classList.toggle('on', b.dataset.pipe===t);
+  });
+  document.getElementById('pipeHint').textContent = t==='sphere'
+    ? '球心在 (0, e, z₀)。球半径要大于主体半径 R₁，两个表面才会相交。'
+    : '从体轴线沿 x 方向，与主体轴线在 z₀ 高度相交；e ≠ 0 时两轴线错开。';
+  refreshPierce();
+}
+
+function switchMode(m){
+  state.mode=m;
+  const sec = (m==='section');
+  document.getElementById('modeSeg').querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.mode===m);
+  });
+  document.getElementById('solidWrap').classList.toggle('hidden-block', !sec);
+  document.getElementById('planeWrap').classList.toggle('hidden-block', !sec);
+  document.getElementById('pipePanel').classList.toggle('hidden-block', sec);
+  document.getElementById('secViewWrap').classList.toggle('hidden-block', !sec);
+  document.getElementById('secStoreWrap').classList.toggle('hidden-block', !sec);
+  document.getElementById('pipeRight').classList.toggle('hidden-block', sec);
+  document.getElementById('btnCompare').classList.toggle('hidden-block', !sec);
+  const bar=document.querySelector('.plane-bar');
+  if(bar) bar.classList.toggle('hidden-block', !sec);
+  const chipPlane=document.querySelector('[data-toggle="plane"]');
+  if(chipPlane) chipPlane.classList.toggle('hidden-block', !sec);
+
+  document.getElementById('panelNote').textContent = sec
+    ? '拖动滑杆移动切割平面；在视图中拖拽可旋转立体。'
+    : '拖拽旋转、捏合缩放；相贯线实线为可见段，虚线为被遮挡段。';
+
+  if(sec){ syncSliders(); refresh(); }
+  else refreshPierce();
+  resize();
+  markDirty();
+}
+
 function setSolid(key, resetPlane){
   state.type=key;
   solid = buildSolid(key, state.faces);
@@ -2180,7 +2715,7 @@ window.addEventListener('keydown',e=>{
 let last=performance.now();
 function loop(t){
   const dt=Math.min(50,t-last); last=t;
-  if(state.auto){
+  if(state.auto && state.mode==='section'){
     state.azim=(state.azim+dt*0.02)%360;
     syncSliders();
     refresh();
@@ -2193,6 +2728,7 @@ function loop(t){
    13. 启动
    ========================================================= */
 buildUI();
+buildPipeUI();
 setSolid('cube', true);
 resize();
 new ResizeObserver(()=>{ resize(); drawThumb(); }).observe(document.getElementById('stage'));
