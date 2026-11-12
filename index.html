@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>截面实验室 · SECTION LAB</title>
+<style>
+  :root{
+    --bg:#060a12;
+    --panel-a:#0b1322;
+    --panel-b:#080e19;
+    --line:rgba(122,160,214,.14);
+    --line-soft:rgba(122,160,214,.08);
+    --gold:#d9b978;
+    --gold-hi:#f0d9a8;
+    --gold-dim:#8a7444;
+    --txt:#dfe7f2;
+    --dim:#7d8da6;
+    --faint:#4b5b74;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --sans:"PingFang SC","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    background:
+      radial-gradient(1200px 700px at 50% -10%,#0d1728 0%,transparent 60%),
+      var(--bg);
+    color:var(--txt); font-family:var(--sans); font-size:13px;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-thumb{background:rgba(122,160,214,.18);border-radius:3px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    height:54px; flex:0 0 54px; display:flex; align-items:center; gap:14px;
+    padding:0 18px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(12,20,34,.92),rgba(7,11,19,.6));
+    backdrop-filter:blur(8px); z-index:20;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:30px;height:30px;border:1px solid rgba(217,185,120,.42);border-radius:8px;
+    display:grid;place-items:center;background:rgba(217,185,120,.06);
+  }
+  .brand-mark svg{width:16px;height:16px;}
+  .brand-txt b{display:block;font-size:14px;font-weight:600;letter-spacing:.16em;}
+  .brand-txt span{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--faint);margin-top:2px;}
+  .topbar .divider{width:1px;height:22px;background:var(--line);}
+  .top-note{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--faint);}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:9px;}
+  .dot-live{width:5px;height:5px;border-radius:50%;background:#6fd3a0;box-shadow:0 0 8px #6fd3a0;}
+  .ghost-btn{
+    display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;
+    border:1px solid var(--line);border-radius:7px;background:rgba(122,160,214,.04);
+    color:var(--dim);font-size:11.5px;cursor:pointer;transition:.18s;font-family:var(--sans);
+  }
+  .ghost-btn:hover{color:var(--gold-hi);border-color:rgba(217,185,120,.45);background:rgba(217,185,120,.08);}
+  .ghost-btn svg{width:12px;height:12px;}
+
+  /* ---------- layout ---------- */
+  .app{
+    flex:1; min-height:0; display:grid;
+    grid-template-columns:274px minmax(0,1fr) 314px;
+    gap:10px; padding:10px 12px 12px;
+  }
+  .panel{
+    background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+    border:1px solid var(--line); border-radius:11px;
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    box-shadow:0 18px 40px -28px #000 inset;
+  }
+  .panel-scroll{flex:1;min-height:0;overflow-y:auto;padding:12px 12px 6px;}
+  .sec-head{
+    display:flex;align-items:baseline;gap:8px;margin:14px 0 9px;
+  }
+  .sec-head:first-child{margin-top:0;}
+  .sec-head h3{font-size:11.5px;font-weight:600;letter-spacing:.12em;color:#c6d3e6;}
+  .sec-head em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--gold);margin-left:auto;}
+  .sec-head span{font-family:var(--mono);font-size:8.5px;letter-spacing:.16em;color:var(--faint);margin-left:auto;}
+
+  /* ---------- solid grid ---------- */
+  .solid-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .solid-btn{
+    position:relative;aspect-ratio:1/1.06;border:1px solid var(--line-soft);border-radius:8px;
+    background:rgba(122,160,214,.025);display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px;cursor:pointer;transition:.18s;color:var(--faint);
+  }
+  .solid-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.1;stroke-linejoin:round;}
+  .solid-btn i{font-style:normal;font-size:9.5px;letter-spacing:.02em;color:var(--dim);}
+  .solid-btn:hover{border-color:rgba(217,185,120,.35);background:rgba(217,185,120,.05);color:var(--gold-dim);}
+  .solid-btn.on{
+    border-color:rgba(217,185,120,.62);color:var(--gold);
+    background:radial-gradient(120% 120% at 50% 0%,rgba(217,185,120,.16),rgba(217,185,120,.03));
+    box-shadow:0 0 0 1px rgba(217,185,120,.12),0 6px 16px -10px rgba(217,185,120,.6);
+  }
+  .solid-btn.on i{color:var(--gold-hi);}
+  .badge-rec{
+    position:absolute;top:3px;right:3px;font-size:7.5px;letter-spacing:.04em;
+    color:#0d1017;background:var(--gold);border-radius:3px;padding:1px 3px;font-weight:600;
+  }
+
+  /* ---------- slider ---------- */
+  .slider-row{margin:11px 0 4px;}
+  .slider-label{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;}
+  .slider-label span{font-size:10.5px;color:var(--dim);letter-spacing:.06em;}
+  .slider-label b{font-family:var(--mono);font-size:10.5px;color:var(--gold);font-weight:500;}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:14px;background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:2px;border-radius:2px;
+    background:linear-gradient(90deg,rgba(217,185,120,.55),rgba(122,160,214,.18));
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:11px;height:11px;border-radius:50%;margin-top:-4.5px;
+    background:radial-gradient(circle at 35% 30%,#f7ecd4,var(--gold));
+    box-shadow:0 0 0 3px rgba(217,185,120,.14),0 0 10px rgba(217,185,120,.5);
+    border:none;
+  }
+  input[type=range]:disabled::-webkit-slider-runnable-track{background:rgba(122,160,214,.14);}
+  input[type=range]:disabled::-webkit-slider-thumb{background:#33415a;box-shadow:none;}
+  .hint{font-size:10px;line-height:1.55;color:var(--faint);margin-top:5px;}
+
+  /* ---------- presets ---------- */
+  .preset{
+    border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px;margin-bottom:6px;
+    cursor:pointer;transition:.18s;background:rgba(122,160,214,.02);
+  }
+  .preset:hover{border-color:rgba(217,185,120,.4);background:rgba(217,185,120,.05);}
+  .preset b{display:block;font-size:11px;font-weight:500;color:#c3d0e2;letter-spacing:.02em;}
+  .preset:hover b{color:var(--gold-hi);}
+  .preset span{display:block;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:3px;letter-spacing:.06em;}
+
+  .eq-box{
+    border:1px solid var(--line-soft);border-radius:8px;padding:9px 10px;
+    background:rgba(122,160,214,.025);
+  }
+  .eq-box code{
+    display:block;font-family:var(--mono);font-size:11px;color:var(--gold-hi);
+    letter-spacing:.02em;line-height:1.5;
+  }
+  .eq-box p{font-size:9.5px;line-height:1.6;color:var(--faint);margin-top:5px;}
+
+  .panel-foot{
+    flex:0 0 auto;display:flex;gap:2px;padding:8px 10px;border-top:1px solid var(--line-soft);
+  }
+  .tab-btn{
+    flex:1;height:24px;border:1px solid transparent;border-radius:5px;background:transparent;
+    color:var(--faint);font-size:10px;letter-spacing:.08em;cursor:pointer;font-family:var(--sans);
+  }
+  .tab-btn.on{color:var(--gold);border-color:rgba(217,185,120,.28);background:rgba(217,185,120,.06);}
+  .panel-note{
+    padding:0 12px 10px;font-size:9.5px;line-height:1.6;color:var(--faint);min-height:46px;
+  }
+
+  /* ---------- stage ---------- */
+  .stage{
+    position:relative;border:1px solid var(--line);border-radius:11px;overflow:hidden;
+    background:
+      radial-gradient(70% 60% at 50% 45%,rgba(28,48,80,.42),transparent 70%),
+      radial-gradient(120% 120% at 50% 120%,rgba(10,18,32,.9),#05080f 70%);
+    min-height:0;
+  }
+  #view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none;}
+  #view:active{cursor:grabbing;}
+  .stage-head{
+    position:absolute;top:0;left:0;right:0;padding:14px 16px;display:flex;align-items:flex-start;
+    gap:14px;pointer-events:none;z-index:3;
+  }
+  .stage-title .kicker{font-family:var(--mono);font-size:8.5px;letter-spacing:.24em;color:var(--faint);margin-bottom:5px;}
+  .stage-title h2{font-size:17px;font-weight:600;letter-spacing:.1em;color:#eaf1fa;}
+  .stage-title p{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:4px;letter-spacing:.04em;}
+  .stage-tools{margin-left:auto;display:flex;gap:6px;pointer-events:auto;}
+  .chip{
+    height:26px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:rgba(9,16,28,.72);
+    color:var(--dim);font-size:10.5px;letter-spacing:.06em;cursor:pointer;transition:.16s;
+    display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);backdrop-filter:blur(4px);
+  }
+  .chip:hover{color:var(--gold-hi);border-color:rgba(217,185,120,.4);}
+  .chip.on{color:var(--gold);border-color:rgba(217,185,120,.5);background:rgba(217,185,120,.1);}
+  .chip .sw{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.7;}
+
+  .plane-bar{
+    position:absolute;left:14px;right:14px;bottom:12px;z-index:3;
+    border:1px solid var(--line);border-radius:10px;
+    background:linear-gradient(180deg,rgba(13,21,35,.94),rgba(8,13,22,.96));
+    backdrop-filter:blur(10px);
+    padding:9px 14px 8px;
+    display:flex;align-items:center;gap:16px;
+  }
+  .pb-title{
+    display:flex;flex-direction:column;gap:3px;padding-right:14px;border-right:1px solid var(--line-soft);
+    flex:0 0 auto;
+  }
+  .pb-title b{font-size:10.5px;font-weight:600;letter-spacing:.12em;color:#c6d3e6;}
+  .pb-title span{font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--faint);}
+  .pb-item{flex:1;min-width:0;}
+  .pb-item .cap{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;}
+  .pb-item .cap span{font-size:9.5px;color:var(--faint);letter-spacing:.1em;}
+  .pb-item .cap b{font-family:var(--mono);font-size:10px;color:var(--gold);font-weight:500;}
+  .auto-btn{
+    flex:0 0 auto;height:30px;padding:0 13px;border-radius:6px;cursor:pointer;font-size:11px;
+    border:1px solid rgba(217,185,120,.35);background:rgba(217,185,120,.08);color:var(--gold-hi);
+    letter-spacing:.1em;transition:.16s;font-family:var(--sans);
+  }
+  .auto-btn:hover{background:rgba(217,185,120,.16);}
+  .auto-btn.on{background:var(--gold);color:#12100a;border-color:var(--gold);}
+
+  /* ---------- right panel ---------- */
+  .section-card{
+    position:relative;border:1px solid var(--line);border-radius:9px;overflow:hidden;
+    background:radial-gradient(120% 100% at 50% 0%,rgba(30,45,70,.55),#070c15);
+  }
+  .sc-head{display:flex;align-items:center;gap:8px;padding:9px 11px 0;}
+  .sc-head h4{font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--gold-hi);}
+  .sc-head .live{
+    margin-left:auto;font-family:var(--mono);font-size:8px;letter-spacing:.16em;color:#6fd3a0;
+    border:1px solid rgba(111,211,160,.3);border-radius:3px;padding:1px 4px;
+  }
+  .sc-head .live.idle{color:var(--faint);border-color:var(--line);}
+  #thumb{display:block;width:100%;height:126px;}
+  .sc-foot{
+    position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;
+    padding:4px 10px;font-family:var(--mono);font-size:8px;color:var(--faint);letter-spacing:.1em;
+  }
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:10px;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;}
+  .stat{padding:8px 6px;text-align:center;border-right:1px solid var(--line-soft);}
+  .stat:last-child{border-right:none;}
+  .stat b{display:block;font-family:var(--mono);font-size:15px;color:var(--gold-hi);font-weight:500;letter-spacing:.02em;}
+  .stat span{display:block;font-size:9px;color:var(--faint);margin-top:3px;letter-spacing:.12em;}
+
+  .seg{display:flex;border:1px solid var(--line-soft);border-radius:7px;overflow:hidden;margin-bottom:7px;}
+  .seg button{
+    flex:1;height:26px;border:none;background:transparent;color:var(--faint);font-size:10.5px;
+    cursor:pointer;transition:.16s;font-family:var(--sans);letter-spacing:.06em;
+  }
+  .seg button+button{border-left:1px solid var(--line-soft);}
+  .seg button:hover{color:var(--gold-hi);}
+  .seg button.on{background:rgba(217,185,120,.14);color:var(--gold-hi);}
+  .row2{display:flex;gap:6px;margin-bottom:2px;}
+  .row2 button{
+    flex:1;height:27px;border:1px solid var(--line-soft);border-radius:6px;background:rgba(122,160,214,.03);
+    color:var(--dim);font-size:10.5px;cursor:pointer;transition:.16s;font-family:var(--sans);letter-spacing:.06em;
+  }
+  .row2 button:hover{color:var(--gold-hi);border-color:rgba(217,185,120,.4);}
+  .row2 button.on{color:var(--gold);border-color:rgba(217,185,120,.45);background:rgba(217,185,120,.1);}
+
+  .saved-item{
+    display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid transparent;
+    border-radius:6px;cursor:pointer;transition:.14s;
+  }
+  .saved-item:hover{background:rgba(122,160,214,.05);border-color:var(--line-soft);}
+  .saved-item .idx{font-family:var(--mono);font-size:8.5px;color:var(--gold-dim);width:14px;}
+  .saved-item .nm{font-size:10.5px;color:#c3d0e2;letter-spacing:.02em;}
+  .saved-item .mt{margin-left:auto;font-family:var(--mono);font-size:8.5px;color:var(--faint);}
+  .saved-item .del{opacity:0;font-size:12px;color:var(--faint);padding:0 2px;transition:.14s;}
+  .saved-item:hover .del{opacity:1;}
+  .saved-item .del:hover{color:#e08a7a;}
+  .empty-note{font-size:9.5px;color:var(--faint);line-height:1.6;padding:2px 2px 6px;}
+
+  .gold-btn{
+    width:100%;height:34px;margin-top:9px;border-radius:7px;cursor:pointer;
+    border:1px solid rgba(217,185,120,.5);
+    background:linear-gradient(180deg,#e6cc96,#c8a663);
+    color:#171206;font-size:11.5px;font-weight:600;letter-spacing:.16em;
+    box-shadow:0 8px 20px -12px rgba(217,185,120,.9);transition:.16s;
+  }
+  .gold-btn:hover{filter:brightness(1.06);}
+  .gold-btn:active{transform:translateY(1px);}
+  .foot-note{font-size:9.5px;line-height:1.65;color:var(--faint);margin-top:9px;}
+
+  @media (max-width:1180px){
+    .app{grid-template-columns:232px minmax(0,1fr) 268px;gap:8px;padding:8px;}
+    .stage-title h2{font-size:15px;}
+  }
+  @media (max-width:960px){
+    body{height:auto;overflow:auto;}
+    .app{grid-template-columns:1fr;}
+    .panel{max-height:none;}
+    .stage{height:64vh;min-height:420px;}
+    .panel-scroll{overflow:visible;}
+  }
+
+  /* ---------- modal ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:80;display:none;
+    background:rgba(3,6,12,.82);backdrop-filter:blur(10px);
+    flex-direction:column;
+  }
+  .modal.show{display:flex;}
+  .modal-head{
+    height:56px;flex:0 0 56px;display:flex;align-items:center;gap:14px;padding:0 20px;
+    border-bottom:1px solid rgba(122,160,214,.12);
+  }
+  .modal-head .mt b{display:block;font-size:13px;letter-spacing:.14em;font-weight:600;}
+  .modal-head .mt span{display:block;font-family:var(--mono);font-size:8px;letter-spacing:.22em;color:var(--faint);margin-top:3px;}
+  .modal-head .tools{margin-left:auto;display:flex;gap:8px;}
+  .sheet-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .sheet{
+    max-width:100%;max-height:100%;width:auto;height:auto;display:block;
+    border-radius:2px;box-shadow:0 40px 90px -30px #000,0 0 0 1px rgba(0,0,0,.4);
+  }
+  .modal-foot{
+    flex:0 0 auto;padding:0 20px 16px;display:flex;gap:18px;justify-content:center;
+    font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.1em;
+  }
+  .modal-foot span{display:inline-flex;align-items:center;gap:6px;}
+  .modal-foot i{width:12px;height:1px;background:var(--faint);display:inline-block;}
+  .modal-foot i.dash{background:none;border-top:1px dashed var(--faint);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#d9b978" stroke-width="1.3" stroke-linejoin="round">
+        <path d="M12 2.6 20.5 7v10L12 21.4 3.5 17V7z"/>
+        <path d="M3.8 7.2 12 11.9l8.2-4.7M12 11.9V21"/>
+      </svg>
+    </div>
+    <div class="brand-txt">
+      <b>截面实验室</b>
+      <span>SECTION LAB · 立体截面探针</span>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="top-note">SOLIDS · PLANE · SECTION</div>
+  <div class="top-right">
+    <span class="dot-live"></span>
+    <span class="top-note" style="color:#7d8da6">实时求解</span>
+    <button class="ghost-btn" id="btnResetAll">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+      重置
+    </button>
+  </div>
+</div>
+
+<div class="app">
+  <!-- ============ LEFT ============ -->
+  <aside class="panel">
+    <div class="panel-scroll">
+      <div class="sec-head"><h3>选择立体</h3><span>8 SOLIDS</span></div>
+      <div class="solid-grid" id="solidGrid"></div>
+
+      <div class="sec-head" style="margin-top:16px"><h3>面数密度</h3><em id="densVal">12</em></div>
+      <div class="slider-row" style="margin-top:0">
+        <input type="range" id="density" min="6" max="36" step="1" value="12">
+        <p class="hint" id="densHint">细分面数越多，越接近真实曲面。</p>
+      </div>
+
+      <div class="sec-head" style="margin-top:14px"><h3>推荐实验</h3><span>EXPERIMENTS</span></div>
+      <div id="presets"></div>
+
+      <div class="sec-head" style="margin-top:14px"><h3>平面方程</h3><span>PLANE EQ.</span></div>
+      <div class="eq-box">
+        <code id="eqLine">0.58x + 0.58y + 0.58z = 0.00</code>
+        <p>法向由倾角 θ 与方位 φ 决定，偏移 h 沿法向平移平面。</p>
+      </div>
+    </div>
+
+    <div class="panel-note" id="panelNote">拖动滑杆移动切割平面；在视图中拖拽可旋转立体。</div>
+    <div class="panel-foot">
+      <button class="tab-btn on" data-tab="0">立体</button>
+      <button class="tab-btn" data-tab="1">截面</button>
+      <button class="tab-btn" data-tab="2">关于</button>
+    </div>
+  </aside>
+
+  <!-- ============ CENTER ============ -->
+  <section class="stage" id="stage">
+    <canvas id="view"></canvas>
+
+    <div class="stage-head">
+      <div class="stage-title">
+        <div class="kicker" id="shapeKicker">SOLID · HEXAHEDRON · CUBE</div>
+        <h2 id="shapeName">正方体</h2>
+        <p id="shapeMeta">8 个顶点 · 12 条棱 · 6 个面</p>
+      </div>
+      <div class="stage-tools">
+        <button class="chip on" data-toggle="edges"><span class="sw"></span>棱线</button>
+        <button class="chip on" data-toggle="plane"><span class="sw"></span>切割面</button>
+        <button class="chip" id="btnPng">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 20h16"/></svg>
+          PNG
+        </button>
+      </div>
+    </div>
+
+    <div class="plane-bar">
+      <div class="pb-title"><b>切割平面</b><span>SECTION PLANE</span></div>
+      <div class="pb-item">
+        <div class="cap"><span>倾角 θ</span><b id="vTilt">54.7°</b></div>
+        <input type="range" id="tilt" min="0" max="90" step="0.5" value="54.7">
+      </div>
+      <div class="pb-item">
+        <div class="cap"><span>方位 φ</span><b id="vAzim">45°</b></div>
+        <input type="range" id="azim" min="0" max="360" step="1" value="45">
+      </div>
+      <div class="pb-item">
+        <div class="cap"><span>偏移 h</span><b id="vOff">0.00</b></div>
+        <input type="range" id="off" min="-1" max="1" step="0.01" value="0">
+      </div>
+      <button class="auto-btn" id="btnAuto">自动</button>
+    </div>
+  </section>
+
+  <!-- ============ RIGHT ============ -->
+  <aside class="panel">
+    <div class="panel-scroll">
+      <div class="sec-head"><h3>截面视图</h3><span>SECTION VIEW</span></div>
+      <div class="section-card">
+        <div class="sc-head">
+          <h4 id="secName">正六边形</h4>
+          <span class="live" id="secLive">LIVE</span>
+        </div>
+        <canvas id="thumb"></canvas>
+        <div class="sc-foot"><span>TRUE SHAPE</span><span id="thumbTag">XZ-PLANE</span></div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b id="stPerimeter">8.49</b><span>周长 P</span></div>
+        <div class="stat"><b id="stArea">5.20</b><span>面积 A</span></div>
+        <div class="stat"><b id="stVerts">6</b><span>顶点数 n</span></div>
+      </div>
+
+      <div class="sec-head" style="margin-top:14px"><h3>视角</h3><span>CAMERA</span></div>
+      <div class="seg" id="viewSeg">
+        <button data-cam="iso" class="on">立体</button>
+        <button data-cam="side">水平</button>
+        <button data-cam="top">垂直</button>
+      </div>
+      <div class="row2">
+        <button id="btnCamReset">复位视角</button>
+        <button id="btnCompare">对比截面</button>
+      </div>
+
+      <div class="sec-head" style="margin-top:14px"><h3>剖面存储</h3><em id="savedCount">0 / 8</em></div>
+      <div id="savedList"></div>
+      <button class="gold-btn" id="btnSheet">生成三视图</button>
+      <p class="foot-note" id="footNote">按第一角投影绘制主视 / 侧视 / 俯视图，比例 1:1。</p>
+    </div>
+  </aside>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="modal" id="modal">
+  <div class="modal-head">
+    <div class="mt">
+      <b>第一角投影三视图</b>
+      <span>ORTHOGRAPHIC VIEWS · FIRST ANGLE</span>
+    </div>
+    <div class="tools">
+      <button class="ghost-btn" id="btnSheetPng">导出 PNG</button>
+      <button class="ghost-btn" id="btnCloseModal">关闭</button>
+    </div>
+  </div>
+  <div class="sheet-wrap"><canvas class="sheet" id="sheetCanvas" width="1700" height="1202"></canvas></div>
+  <div class="modal-foot">
+    <span><i></i> 可见轮廓</span>
+    <span><i class="dash"></i> 不可见轮廓</span>
+    <span><i></i> 45° 投影辅助线</span>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   1. 向量工具
+   ========================================================= */
+const V = {
+  add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
+  sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
+  mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],
+  dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+  cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],
+  len:a=>Math.hypot(a[0],a[1],a[2]),
+  norm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];},
+  scale:(a,s)=>[a[0]*s,a[1]*s,a[2]*s]
+};
+const DEG = Math.PI/180;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* =========================================================
+   2. 几何构造
+   ========================================================= */
+const PHI = (1+Math.sqrt(5))/2;
+
+function centroid(verts){
+  const c = verts.reduce((s,v)=>V.add(s,v),[0,0,0]);
+  return V.mul(c,1/verts.length);
+}
+
+/* 凸多面体：从顶点直接求出所有支撑平面 -> 面 */
+function hullFaces(verts){
+  const n = verts.length, planes = [];
+  const EPS = 1e-7;
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)for(let k=j+1;k<n;k++){
+    const a=verts[i],b=verts[j],c=verts[k];
+    let nor = V.cross(V.sub(b,a),V.sub(c,a));
+    if(V.len(nor) < 1e-9) continue;
+    nor = V.norm(nor);
+    let d = V.dot(nor,a);
+    let pos=false, neg=false;
+    for(const v of verts){
+      const t = V.dot(nor,v)-d;
+      if(t>1e-6) pos=true; else if(t<-1e-6) neg=true;
+    }
+    if(pos && neg) continue;
+    if(pos){ nor = V.mul(nor,-1); d = -d; }
+    planes.push({n:nor,d});
+  }
+  const uniq = [];
+  for(const p of planes){
+    if(!uniq.some(q=>Math.abs(q.d-p.d)<1e-5 && V.dot(q.n,p.n)>1-1e-5)) uniq.push(p);
+  }
+  const faces = [];
+  for(const p of uniq){
+    const idx = [];
+    for(let i=0;i<n;i++) if(Math.abs(V.dot(p.n,verts[i])-p.d) < 1e-4) idx.push(i);
+    if(idx.length < 3) continue;
+    const cen = idx.reduce((s,i)=>V.add(s,verts[i]),[0,0,0]).map(x=>x/idx.length);
+    const u = V.norm(V.sub(verts[idx[0]],cen));
+    const w = V.cross(p.n,u);
+    idx.sort((A,B)=>{
+      const pa=V.sub(verts[A],cen), pb=V.sub(verts[B],cen);
+      return Math.atan2(V.dot(pa,w),V.dot(pa,u)) - Math.atan2(V.dot(pb,w),V.dot(pb,u));
+    });
+    faces.push(idx);
+  }
+  return faces;
+}
+
+function faceNormal(verts,f){
+  const a=verts[f[0]], b=verts[f[1]], c=verts[f[2]];
+  let n = V.cross(V.sub(b,a),V.sub(c,a));
+  if(V.len(n) < 1e-12){
+    // 退化：用任意三点
+    for(let i=2;i<f.length;i++){
+      n = V.cross(V.sub(verts[f[1]],a), V.sub(verts[f[i]],a));
+      if(V.len(n)>1e-12) break;
+    }
+  }
+  return V.norm(n);
+}
+
+function orientFaces(verts, faces){
+  const c = centroid(verts);
+  return faces.map(f=>{
+    const n = faceNormal(verts,f);
+    const fc = f.reduce((s,i)=>V.add(s,verts[i]),[0,0,0]).map(x=>x/f.length);
+    return V.dot(n, V.sub(fc,c)) < 0 ? f.slice().reverse() : f;
+  });
+}
+
+function buildEdges(verts, faces, normals){
+  const map = new Map();
+  faces.forEach((f,fi)=>{
+    for(let i=0;i<f.length;i++){
+      const a=f[i], b=f[(i+1)%f.length];
+      if(a===b) continue;
+      const key = a<b ? a+'_'+b : b+'_'+a;
+      let e = map.get(key);
+      if(!e){ e = {a:Math.min(a,b), b:Math.max(a,b), f:[]}; map.set(key,e); }
+      if(!e.f.includes(fi)) e.f.push(fi);
+    }
+  });
+  const edges = [...map.values()];
+  edges.forEach(e=>{
+    if(e.f.length < 2){ e.sharp = true; e.angle = 90; return; }
+    const d = clamp(V.dot(normals[e.f[0]], normals[e.f[1]]),-1,1);
+    e.angle = Math.acos(d)/DEG;
+    e.sharp = e.angle > 9;
+  });
+  return edges;
+}
+
+/* ---- 各种立体 ---- */
+function icosaVerts(){
+  const v = [];
+  [[0,1,PHI],[0,-1,PHI],[0,1,-PHI],[0,-1,-PHI]].forEach(p=>v.push(p));
+  [[1,PHI,0],[-1,PHI,0],[1,-PHI,0],[-1,-PHI,0]].forEach(p=>v.push(p));
+  [[PHI,0,1],[PHI,0,-1],[-PHI,0,1],[-PHI,0,-1]].forEach(p=>v.push(p));
+  return v.map(p=>V.mul(V.norm(p),1.5));
+}
+
+function polyVerts(key){
+  if(key==='cube'){
+    const v=[];
+    for(const x of [-1,1])for(const y of [-1,1])for(const z of [-1,1]) v.push([x,y,z]);
+    return v.map(p=>V.mul(p,0.866));
+  }
+  if(key==='tetra'){
+    return [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]].map(p=>V.mul(V.norm(p),1.5));
+  }
+  if(key==='octa'){
+    return [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].map(p=>V.mul(p,1.5));
+  }
+  if(key==='icosa') return icosaVerts();
+  if(key==='dodeca'){
+    const iv = icosaVerts();
+    const f = hullFaces(iv);
+    return f.map(face=>{
+      const c = face.reduce((s,i)=>V.add(s,iv[i]),[0,0,0]).map(x=>x/face.length);
+      return V.mul(V.norm(c),1.5);
+    });
+  }
+  return null;
+}
+
+function buildSolid(key, density){
+  let verts, faces, smooth=false;
+
+  if(key==='sphere'){
+    const R=1.42, LA=9, LO=18, rings=[], v=[];
+    v.push([0,0,R]);            // 0 north
+    for(let i=1;i<LA;i++){
+      const th = Math.PI*i/LA;
+      const r = R*Math.sin(th), z = R*Math.cos(th);
+      const ring=[];
+      for(let j=0;j<LO;j++){
+        const ph = 2*Math.PI*j/LO;
+        ring.push(v.length);
+        v.push([r*Math.cos(ph), r*Math.sin(ph), z]);
+      }
+      rings.push(ring);
+    }
+    v.push([0,0,-R]);
+    const south = v.length-1;
+    faces=[];
+    for(let j=0;j<LO;j++){
+      const j2=(j+1)%LO;
+      faces.push([0, rings[0][j], rings[0][j2]]);
+    }
+    for(let i=0;i<rings.length-1;i++){
+      for(let j=0;j<LO;j++){
+        const j2=(j+1)%LO;
+        faces.push([rings[i][j], rings[i+1][j], rings[i+1][j2], rings[i][j2]]);
+      }
+    }
+    const last = rings[rings.length-1];
+    for(let j=0;j<LO;j++){
+      const j2=(j+1)%LO;
+      faces.push([south, last[j2], last[j]]);
+    }
+    verts=v; smooth=true;
+  }
+  else if(key==='cylinder'){
+    const n=density, r=0.94, h=1.14, v=[], fc=[];
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), -h]);
+    }
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), h]);
+    }
+    for(let i=0;i<n;i++){
+      const i2=(i+1)%n;
+      fc.push([i, i2, n+i2, n+i]);
+    }
+    const bottom=[]; for(let i=n-1;i>=0;i--) bottom.push(i);
+    const top=[]; for(let i=0;i<n;i++) top.push(n+i);
+    fc.push(bottom); fc.push(top);
+    verts=v; faces=fc; smooth=true;
+  }
+  else if(key==='cone'){
+    const n=density, r=1.06, h=0.86, v=[], fc=[];
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), -h]);
+    }
+    v.push([0,0,1.28]);
+    const apex=v.length-1;
+    for(let i=0;i<n;i++) fc.push([i, (i+1)%n, apex]);
+    const base=[]; for(let i=n-1;i>=0;i--) base.push(i);
+    fc.push(base);
+    verts=v; faces=fc; smooth=true;
+  }
+  else {
+    verts = polyVerts(key);
+    faces = hullFaces(verts);
+  }
+
+  faces = orientFaces(verts, faces);
+  const normals = faces.map(f=>faceNormal(verts,f));
+  const edges = buildEdges(verts, faces, normals);
+  const centers = faces.map(f=>f.reduce((s,i)=>V.add(s,verts[i]),[0,0,0]).map(x=>x/f.length));
+
+  return {key, verts, faces, normals, edges, centers, smooth, density,
+          nv:verts.length, ne:edges.length, nf:faces.length};
+}
+
+/* 圆柱/圆锥/球 的真名 */
+const BASE = {
+  cube:      {name:'正方体',    en:'CUBE',        kicker:'SOLID · HEXAHEDRON · CUBE'},
+  tetra:     {name:'正四面体',  en:'TETRAHEDRON', kicker:'SOLID · PLATONIC · TETRAHEDRON'},
+  octa:      {name:'正八面体',  en:'OCTAHEDRON',  kicker:'SOLID · PLATONIC · OCTAHEDRON'},
+  dodeca:    {name:'正十二面体',en:'DODECAHEDRON',kicker:'SOLID · PLATONIC · DODECAHEDRON'},
+  icosa:     {name:'正二十面体',en:'ICOSAHEDRON', kicker:'SOLID · PLATONIC · ICOSAHEDRON'},
+  cylinder:  {name:'圆柱',      en:'CYLINDER',    kicker:'SOLID · QUADRIC · CYLINDER'},
+  cone:      {name:'圆锥',      en:'CONE',        kicker:'SOLID · QUADRIC · CONE'},
+  sphere:    {name:'球',        en:'SPHERE',      kicker:'SOLID · QUADRIC · SPHERE'}
+};
+
+/* =========================================================
+   3. 截面求解
+   ========================================================= */
+function planeOf(state){
+  const th = state.tilt*DEG, ph = state.azim*DEG;
+  const n = [Math.sin(th)*Math.cos(ph), Math.sin(th)*Math.sin(ph), Math.cos(th)];
+  const R = 1.5;
+  return {n, d: state.off * R * 1.05};
+}
+
+function planeBasis(n){
+  const helper = Math.abs(n[2]) < 0.9 ? [0,0,1] : [1,0,0];
+  const u = V.norm(V.cross(helper,n));
+  const w = V.cross(n,u);
+  return {u,w};
+}
+
+function hull2(pts){
+  const p = pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  if(p.length<3) return p;
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[]; for(const q of p){ while(lo.length>=2 && cr(lo[lo.length-2],lo[lo.length-1],q)<=1e-10) lo.pop(); lo.push(q); }
+  const up=[]; for(let i=p.length-1;i>=0;i--){ const q=p[i]; while(up.length>=2 && cr(up[up.length-2],up[up.length-1],q)<=1e-10) up.pop(); up.push(q); }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+
+function solveSection(solid, plane){
+  const {n,d} = plane;
+  const {u,w} = planeBasis(n);
+  const O = V.mul(n,d);
+
+  // 球：解析圆
+  if(solid.key==='sphere'){
+    const R=1.42, r2 = R*R - d*d;
+    if(r2 <= 1e-6) return {pts:[], area:0, perim:0, circle:0};
+    const r = Math.sqrt(r2), pts=[], N=96;
+    for(let i=0;i<N;i++){
+      const a=2*Math.PI*i/N;
+      pts.push(V.add(O, V.add(V.mul(u,r*Math.cos(a)), V.mul(w,r*Math.sin(a)))));
+    }
+    return {pts, area:Math.PI*r2, perim:2*Math.PI*r, circle:r, u, w, O};
+  }
+
+  const raw=[];
+  for(const e of solid.edges){
+    const A=solid.verts[e.a], B=solid.verts[e.b];
+    const da=V.dot(n,A)-d, db=V.dot(n,B)-d;
+    if(Math.abs(da)<1e-9){ raw.push(A); continue; }
+    if(Math.abs(db)<1e-9){ raw.push(B); continue; }
+    if((da>0&&db<0)||(da<0&&db>0)){
+      const t=da/(da-db);
+      raw.push(V.add(A, V.mul(V.sub(B,A),t)));
+    }
+  }
+  if(raw.length<3) return {pts:[], area:0, perim:0};
+
+  // 2D 化 + 去重
+  const seen=[];
+  for(const p of raw){
+    const x=V.dot(V.sub(p,O),u), y=V.dot(V.sub(p,O),w);
+    if(!seen.some(q=>Math.hypot(q[0]-x,q[1]-y)<1e-5)) seen.push([x,y]);
+  }
+  const h = hull2(seen);
+  if(h.length<3) return {pts:[], area:0, perim:0};
+
+  const pts = h.map(q=>V.add(O, V.add(V.mul(u,q[0]), V.mul(w,q[1]))));
+  let area=0, perim=0;
+  for(let i=0;i<h.length;i++){
+    const a=h[i], b=h[(i+1)%h.length];
+    area += a[0]*b[1]-b[0]*a[1];
+    perim += Math.hypot(b[0]-a[0], b[1]-a[1]);
+  }
+  area = Math.abs(area)/2;
+  return {pts, area, perim, hull2d:h, u, w, O};
+}
+
+/* 截面形状命名 */
+const CN = ['零','一','二','三','四','五','六','七','八','九'];
+function cnNum(n){
+  if(n<10) return CN[n];
+  if(n<20) return '十'+(n%10?CN[n%10]:'');
+  const t=Math.floor(n/10), o=n%10;
+  return CN[t]+'十'+(o?CN[o]:'');
+}
+function sectionName(sec){
+  if(sec.circle) return '圆';
+  const pts = sec.pts;
+  const n = pts.length;
+  if(n<3) return '无截面';
+  // 正多边形判定
+  const lens=[], angs=[];
+  for(let i=0;i<n;i++){
+    const a=pts[i], b=pts[(i+1)%n], c=pts[(i+2)%n];
+    lens.push(V.len(V.sub(b,a)));
+    const u1=V.norm(V.sub(a,b)), u2=V.norm(V.sub(c,b));
+    angs.push(Math.acos(clamp(V.dot(u1,u2),-1,1))/DEG);
+  }
+  const lmin=Math.min(...lens), lmax=Math.max(...lens);
+  const amin=Math.min(...angs), amax=Math.max(...angs);
+  const regular = (lmax-lmin)/Math.max(lmax,1e-6) < 0.055 && (amax-amin) < 5;
+  return (regular?'正':'')+cnNum(n)+'边形';
+}
+
+/* =========================================================
+   4. 状态
+   ========================================================= */
+const state = {
+  type:'cube', density:12,
+  tilt:54.7, azim:45, off:0,
+  yaw:52, pitch:21, dist:6.4,
+  showEdges:true, showPlane:true,
+  auto:false, compare:false
+};
+let solid = null, section = null;
+let compareSec = null;
+let saved = [];
+let dirty = true;
+const markDirty = ()=>{ dirty = true; };
+
+/* =========================================================
+   5. 相机 / 投影
+   ========================================================= */
+function makeCam(w,h){
+  const yaw=state.yaw*DEG, pitch=state.pitch*DEG;
+  const eye=[state.dist*Math.cos(pitch)*Math.cos(yaw),
+             state.dist*Math.cos(pitch)*Math.sin(yaw),
+             state.dist*Math.sin(pitch)];
+  const f=V.norm(V.mul(eye,-1));
+  let up=[0,0,1];
+  if(Math.abs(V.dot(f,up))>0.995) up=[0,1,0];
+  const r=V.norm(V.cross(f,up));
+  const u=V.cross(r,f);
+  return {eye,f,r,u,focal:Math.min(w,h)*1.34, cx:w/2, cy:h*0.5};
+}
+function proj(cam,p){
+  const q=V.sub(p,cam.eye);
+  const z=V.dot(q,cam.f);
+  const k=cam.focal/Math.max(z,0.05);
+  return {x:cam.cx+V.dot(q,cam.r)*k, y:cam.cy-V.dot(q,cam.u)*k, z};
+}
+
+/* =========================================================
+   6. 主视图渲染
+   ========================================================= */
+const view = document.getElementById('view');
+const vctx = view.getContext('2d');
+let W=0,H=0,DPR=1;
+
+function resize(){
+  const r = view.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = Math.max(1,Math.round(r.width));
+  H = Math.max(1,Math.round(r.height));
+  view.width = Math.round(W*DPR);
+  view.height = Math.round(H*DPR);
+  vctx.setTransform(DPR,0,0,DPR,0,0);
+  markDirty();
+}
+
+function drawAmbient(ctx,w,h){
+  const cx=w/2, cy=h*0.46;
+  ctx.save();
+  ctx.strokeStyle='rgba(122,160,214,.055)';
+  ctx.lineWidth=1;
+  for(let i=1;i<=4;i++){
+    const r=Math.min(w,h)*(0.16*i);
+    ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.42,0,0,Math.PI*2); ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(122,160,214,.035)';
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*Math.min(w,h)*0.1, cy+Math.sin(a)*Math.min(w,h)*0.042);
+    ctx.lineTo(cx+Math.cos(a)*Math.min(w,h)*0.78, cy+Math.sin(a)*Math.min(w,h)*0.33);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAxis(ctx,cam){
+  const ox=52, oy=H-100, L=20;
+  const dirs=[[1,0,0,'X'],[0,1,0,'Y'],[0,0,1,'Z']];
+  ctx.save();
+  ctx.font='9px var(--mono),monospace';
+  for(const [x,y,z,label] of dirs){
+    const p=proj(cam,V.add(cam.eye, V.mul(cam.f,state.dist)));
+    // 用相对方向投影：取原点与单位向量
+    const o=proj(cam,[0,0,0]);
+    const q=proj(cam,[x*0.55,y*0.55,z*0.55]);
+    let dx=q.x-o.x, dy=q.y-o.y;
+    const l=Math.hypot(dx,dy)||1;
+    dx=dx/l*L; dy=dy/l*L;
+    const isZ = z!==0;
+    ctx.strokeStyle = isZ?'rgba(217,185,120,.55)':'rgba(122,160,214,.4)';
+    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ox+dx,oy+dy); ctx.stroke();
+    ctx.fillStyle = isZ?'rgba(217,185,120,.75)':'rgba(122,160,214,.55)';
+    ctx.fillText(label, ox+dx*1.22-2.5, oy+dy*1.22+3);
+  }
+  ctx.restore();
+}
+
+function render(){
+  const ctx=vctx;
+  ctx.clearRect(0,0,W,H);
+  drawAmbient(ctx,W,H);
+  if(!solid) return;
+
+  const cam = makeCam(W,H);
+  const P = solid.verts.map(p=>proj(cam,p));
+  const faceDepth = solid.centers.map((c,i)=>proj(cam,c).z);
+  const order = solid.faces.map((f,i)=>i).sort((a,b)=>faceDepth[b]-faceDepth[a]);
+
+  const facing = solid.centers.map((c,i)=>{
+    const toEye = V.sub(cam.eye,c);
+    return V.dot(solid.normals[i],toEye) > 0;
+  });
+
+  // —— 背面填充
+  ctx.save();
+  for(const fi of order){
+    if(facing[fi]) continue;
+    const f=solid.faces[fi], pts=f.map(i=>P[i]);
+    ctx.beginPath();
+    pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle='rgba(56,88,140,.07)';
+    ctx.fill();
+  }
+  // —— 切割平面（半透明面片）
+  if(state.showPlane){
+    const pl = planeOf(state);
+    const {u,w}=planeBasis(pl.n);
+    const O=V.mul(pl.n,pl.d);
+    const S=1.72;
+    const corners=[[-S,-S],[S,-S],[S,S],[-S,S]].map(([a,b])=>{
+      return proj(cam, V.add(O, V.add(V.mul(u,a),V.mul(w,b))));
+    });
+    ctx.beginPath();
+    corners.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle='rgba(217,185,120,.022)';
+    ctx.fill();
+    ctx.setLineDash([4,5]);
+    ctx.strokeStyle='rgba(217,185,120,.18)';
+    ctx.lineWidth=1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // —— 正面填充
+  for(const fi of order){
+    if(!facing[fi]) continue;
+    const f=solid.faces[fi], pts=f.map(i=>P[i]);
+    ctx.beginPath();
+    pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle='rgba(78,118,184,.075)';
+    ctx.fill();
+  }
+
+  // —— 棱线
+  if(state.showEdges){
+    for(const e of solid.edges){
+      const A=solid.verts[e.a], B=solid.verts[e.b];
+      const mid=V.mul(V.add(A,B),0.5);
+      const toEye=V.sub(cam.eye,mid);
+      let vis=false;
+      if(e.f.length){
+        vis = e.f.some(fi=>V.dot(solid.normals[fi],toEye)>0);
+      }
+      const sil = e.f.length>1 && facing[e.f[0]] !== facing[e.f[1]];
+      let alpha;
+      if(solid.smooth) alpha = sil ? 0.42 : (e.sharp ? 0.2 : 0.07);
+      else alpha = vis ? 0.62 : 0.2;
+      ctx.strokeStyle = `rgba(146,180,228,${alpha})`;
+      ctx.lineWidth = (vis||sil) ? 1.05 : 0.8;
+      ctx.beginPath();
+      ctx.moveTo(P[e.a].x,P[e.a].y);
+      ctx.lineTo(P[e.b].x,P[e.b].y);
+      ctx.stroke();
+    }
+  }
+
+  // —— 对比截面（虚线参考）
+  if(state.compare && compareSec && compareSec.pts.length>1){
+    ctx.save();
+    ctx.setLineDash([3,4]);
+    ctx.strokeStyle='rgba(150,168,195,.5)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    compareSec.pts.forEach((p,k)=>{
+      const q=proj(cam,p);
+      k?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);
+    });
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // —— 截面
+  if(section && section.pts.length>1){
+    const sp = section.pts.map(p=>proj(cam,p));
+    ctx.beginPath();
+    sp.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    ctx.fillStyle='rgba(220,190,128,.24)';
+    ctx.fill();
+    ctx.strokeStyle='rgba(240,217,168,.9)';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+
+    // 顶点标记
+    if(section.pts.length<=160 && !section.circle){
+      for(const p of sp){
+        ctx.fillStyle='rgba(248,235,205,.95)';
+        ctx.fillRect(p.x-1.8,p.y-1.8,3.6,3.6);
+      }
+    }
+    // 截面轮廓微光
+    ctx.strokeStyle='rgba(217,185,120,.22)';
+    ctx.lineWidth=5;
+    ctx.stroke();
+  }
+
+  drawAxis(ctx,cam);
+  ctx.restore();
+}
+
+/* =========================================================
+   7. 截面缩略图
+   ========================================================= */
+const thumb=document.getElementById('thumb');
+const tctx=thumb.getContext('2d');
+
+function drawThumb(){
+  const r=thumb.getBoundingClientRect();
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.max(1,r.width), h=Math.max(1,r.height);
+  if(thumb.width!==Math.round(w*dpr)||thumb.height!==Math.round(h*dpr)){
+    thumb.width=Math.round(w*dpr); thumb.height=Math.round(h*dpr);
+  }
+  tctx.setTransform(dpr,0,0,dpr,0,0);
+  tctx.clearRect(0,0,w,h);
+
+  // 网格
+  tctx.strokeStyle='rgba(122,160,214,.07)';
+  tctx.lineWidth=1;
+  for(let x=0.5;x<w;x+=18){ tctx.beginPath(); tctx.moveTo(x,0); tctx.lineTo(x,h); tctx.stroke(); }
+  for(let y=0.5;y<h;y+=18){ tctx.beginPath(); tctx.moveTo(0,y); tctx.lineTo(w,y); tctx.stroke(); }
+
+  if(!section || section.pts.length<3){
+    tctx.fillStyle='rgba(122,160,214,.5)';
+    tctx.font='11px var(--mono),monospace';
+    tctx.textAlign='center';
+    tctx.fillText('平面与立体无交集', w/2, h/2);
+    return;
+  }
+
+  const xs=[], ys=[];
+  for(const p of section.pts){
+    xs.push(V.dot(V.sub(p,section.O),section.u));
+    ys.push(V.dot(V.sub(p,section.O),section.w));
+  }
+  const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+  const pad=26;
+  const s=Math.min((w-pad*2)/Math.max(maxx-minx,1e-6),(h-pad*2)/Math.max(maxy-miny,1e-6));
+  const cx=w/2, cy=h/2;
+  const mx=(minx+maxx)/2, my=(miny+maxy)/2;
+  const map=(x,y)=>[cx+(x-mx)*s, cy-(y-my)*s];
+
+  // 对比
+  if(state.compare && compareSec && compareSec.pts.length>2){
+    tctx.save();
+    tctx.setLineDash([3,4]);
+    tctx.strokeStyle='rgba(150,168,195,.45)';
+    tctx.beginPath();
+    compareSec.pts.forEach((p,k)=>{
+      const [x,y]=map(V.dot(V.sub(p,section.O),section.u), V.dot(V.sub(p,section.O),section.w));
+      k?tctx.lineTo(x,y):tctx.moveTo(x,y);
+    });
+    tctx.closePath(); tctx.stroke();
+    tctx.restore();
+  }
+
+  tctx.beginPath();
+  xs.forEach((x,i)=>{
+    const [px,py]=map(x,ys[i]);
+    i?tctx.lineTo(px,py):tctx.moveTo(px,py);
+  });
+  tctx.closePath();
+  tctx.fillStyle='rgba(217,185,120,.14)';
+  tctx.fill();
+  tctx.strokeStyle='rgba(240,217,168,.92)';
+  tctx.lineWidth=1.4;
+  tctx.stroke();
+
+  // 顶点
+  xs.forEach((x,i)=>{
+    const [px,py]=map(x,ys[i]);
+    tctx.fillStyle='rgba(248,235,205,.9)';
+    tctx.fillRect(px-1.5,py-1.5,3,3);
+  });
+
+  // 中心十字
+  tctx.strokeStyle='rgba(217,185,120,.16)';
+  tctx.setLineDash([2,3]);
+  tctx.beginPath(); tctx.moveTo(cx-16,cy); tctx.lineTo(cx+16,cy); tctx.moveTo(cx,cy-16); tctx.lineTo(cx,cy+16); tctx.stroke();
+  tctx.setLineDash([]);
+}
+
+/* =========================================================
+   8. UI 构建
+   ========================================================= */
+const ICONS = {
+  cube:'<path d="M12 3.2 20 7.4v9.2L12 20.8 4 16.6V7.4z"/><path d="M4.3 7.6 12 11.6l7.7-4"/><path d="M12 11.6v9"/>',
+  tetra:'<path d="M12 3.6 20.4 18H3.6z"/><path d="M12 3.6v8.2M3.9 17.6l8.1-5.8M20.1 17.6 12 11.8"/>',
+  octa:'<path d="M12 3 20 12l-8 9-8-9z"/><path d="M4 12h16M12 3v18"/>',
+  dodeca:'<path d="M12 3.2 20.2 8.9 17.4 18.4H6.6L3.8 8.9z"/><path d="M12 3.2v6.3M20.2 8.9 12 9.5M6.6 18.4 12 9.5M17.4 18.4 12 9.5M3.8 8.9 12 9.5"/>',
+  icosa:'<path d="M12 3.4 20.4 17.6H3.6z"/><path d="M7.6 9.4h8.8M12 3.4l-3.4 6M12 3.4l3.4 6M3.6 17.6l4-8.2M20.4 17.6l-4-8.2M8.4 17.6 7.6 9.4M15.6 17.6l.8-8.2"/>',
+  cylinder:'<ellipse cx="12" cy="7" rx="7.2" ry="3"/><path d="M4.8 7v10c0 1.66 3.22 3 7.2 3s7.2-1.34 7.2-3V7"/>',
+  cone:'<path d="M12 3.4 20 18.4M12 3.4 4 18.4"/><ellipse cx="12" cy="18.4" rx="8" ry="3"/>',
+  sphere:'<circle cx="12" cy="12" r="8.4"/><ellipse cx="12" cy="12" rx="8.4" ry="3.1"/><path d="M12 3.6c-4 4-4 12.8 0 16.8M12 3.6c4 4 4 12.8 0 16.8"/>'
+};
+const ORDER = ['cube','tetra','octa','dodeca','icosa','cylinder','cone','sphere'];
+
+function buildUI(){
+  const grid=document.getElementById('solidGrid');
+  grid.innerHTML = ORDER.map(k=>`
+    <button class="solid-btn${state.type===k?' on':''}" data-solid="${k}">
+      ${k==='cube'?'<span class="badge-rec">推荐</span>':''}
+      <svg viewBox="0 0 24 24">${ICONS[k]}</svg>
+      <i>${BASE[k].name}</i>
+    </button>`).join('');
+
+  grid.querySelectorAll('.solid-btn').forEach(b=>{
+    b.onclick=()=>{ setSolid(b.dataset.solid); };
+  });
+
+  const presets=[
+    {t:'看一切正方体的截面', s:'cube',     tilt:54.7, azim:45, off:0,   tag:'正方体 · 正六边形'},
+    {t:'把圆柱切出椭圆',     s:'cylinder', tilt:52,   azim:0,  off:0,   tag:'圆柱 · 斜切'},
+    {t:'与斜切的圆锥对谈',   s:'cone',     tilt:58,   azim:20, off:0.18,tag:'圆锥 · 椭圆 / 双曲线'}
+  ];
+  const pbox=document.getElementById('presets');
+  pbox.innerHTML = presets.map((p,i)=>`<div class="preset" data-i="${i}"><b>${p.t}</b><span>${p.tag}</span></div>`).join('');
+  pbox.querySelectorAll('.preset').forEach(el=>{
+    el.onclick=()=>{
+      const p=presets[+el.dataset.i];
+      setSolid(p.s, false);
+      state.tilt=p.tilt; state.azim=p.azim; state.off=p.off;
+      syncSliders(); refresh();
+    };
+  });
+}
+
+function syncSliders(){
+  document.getElementById('tilt').value=state.tilt;
+  document.getElementById('azim').value=state.azim;
+  document.getElementById('off').value=state.off;
+  document.getElementById('vTilt').textContent=state.tilt.toFixed(1)+'°';
+  document.getElementById('vAzim').textContent=Math.round(state.azim)+'°';
+  document.getElementById('vOff').textContent=state.off.toFixed(2);
+  document.getElementById('density').value=state.density;
+  document.getElementById('densVal').textContent=state.density;
+}
+
+/* =========================================================
+   9. 状态刷新
+   ========================================================= */
+function setSolid(key, resetPlane){
+  state.type=key;
+  solid = buildSolid(key, state.density);
+  document.querySelectorAll('.solid-btn').forEach(b=>b.classList.toggle('on', b.dataset.solid===key));
+  const densOn = (key==='cylinder'||key==='cone');
+  document.getElementById('density').disabled = !densOn;
+  document.getElementById('densHint').textContent = densOn
+    ? '细分面数越多，越接近真实曲面；越少越像棱柱 / 棱锥。'
+    : '多面体使用精确平面，密度滑杆仅对圆柱 / 圆锥生效。';
+
+  if(resetPlane!==false){
+    if(key==='cube'){ state.tilt=54.7; state.azim=45; state.off=0; }
+    else if(key==='sphere'){ state.tilt=90; state.azim=0; state.off=0; }
+    else { state.tilt=42; state.azim=28; state.off=0; }
+  }
+  syncSliders();
+  refresh();
+}
+
+function refresh(){
+  if(!solid) return;
+  const plane = planeOf(state);
+  section = solveSection(solid, plane);
+
+  // 标题
+  const base=BASE[solid.key];
+  let name=base.name, meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面`;
+  if(solid.key==='cylinder'){
+    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 以${cnNum(state.density)}棱柱逼近`;
+  } else if(solid.key==='cone'){
+    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 以${cnNum(state.density)}棱锥逼近`;
+  } else if(solid.key==='sphere'){
+    meta='曲面 · 经纬 9×18 细分 · 半径 1.42';
+  }
+  document.getElementById('shapeName').textContent=name;
+  document.getElementById('shapeKicker').textContent=base.kicker;
+  document.getElementById('shapeMeta').textContent=meta;
+
+  const hasSection = section.pts.length>2;
+  document.getElementById('secName').textContent = hasSection ? sectionName(section) : '无截面';
+  document.getElementById('secLive').textContent = hasSection?'LIVE':'IDLE';
+  document.getElementById('secLive').classList.toggle('idle',!hasSection);
+  document.getElementById('stPerimeter').textContent = hasSection?section.perim.toFixed(2):'—';
+  document.getElementById('stArea').textContent = hasSection?section.area.toFixed(2):'—';
+  document.getElementById('stVerts').textContent = hasSection?(section.circle?'∞':section.pts.length):'—';
+
+  // 平面法向提示
+  const n = plane.n;
+  const nrm = `n = (${n[0].toFixed(2)}, ${n[1].toFixed(2)}, ${n[2].toFixed(2)})`;
+  document.getElementById('thumbTag').textContent = nrm;
+
+  document.getElementById('eqLine').textContent =
+    `${n[0].toFixed(2)}x + ${n[1].toFixed(2)}y + ${n[2].toFixed(2)}z = ${plane.d.toFixed(2)}`;
+
+  if(hasSection && section.pts.length===3) document.getElementById('footNote').textContent='当前截面为三角形，三个顶点落在立体的三条棱上。';
+  else if(section.circle) document.getElementById('footNote').textContent='球被平面所截，截面恒为圆，半径 r = √(R² − d²)。';
+  else if(hasSection) document.getElementById('footNote').textContent='截面顶点均为平面与立体棱的交点，按真实尺度计算周长与面积。';
+  else document.getElementById('footNote').textContent='平面已移出立体范围，试着减小偏移 h。';
+
+  drawThumb();
+  markDirty();
+}
+
+/* =========================================================
+   10. 交互
+   ========================================================= */
+let drag=null;
+view.addEventListener('pointerdown',e=>{
+  drag={x:e.clientX,y:e.clientY};
+  view.setPointerCapture(e.pointerId);
+});
+view.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  drag={x:e.clientX,y:e.clientY};
+  state.yaw += dx*0.42;
+  state.pitch = clamp(state.pitch - dy*0.36,-82,82);
+  camSegSet('iso');
+  markDirty();
+});
+view.addEventListener('pointerup',()=>{ drag=null; });
+view.addEventListener('dblclick',()=>{
+  state.yaw=52; state.pitch=21; state.dist=6.4;
+  camSegSet('iso'); markDirty();
+});
+view.addEventListener('pointercancel',()=>{ drag=null; });
+view.addEventListener('wheel',e=>{
+  e.preventDefault();
+  state.dist = clamp(state.dist + Math.sign(e.deltaY)*0.32, 3.4, 12);
+  markDirty();
+},{passive:false});
+
+document.querySelectorAll('.chip[data-toggle]').forEach(c=>{
+  c.onclick=()=>{
+    const k=c.dataset.toggle;
+    if(k==='edges'){ state.showEdges=!state.showEdges; c.classList.toggle('on',state.showEdges); }
+    if(k==='plane'){ state.showPlane=!state.showPlane; c.classList.toggle('on',state.showPlane); }
+    markDirty();
+  };
+});
+
+document.getElementById('btnAuto').onclick=function(){
+  state.auto=!state.auto;
+  this.classList.toggle('on',state.auto);
+  if(state.auto) markDirty();
+};
+
+function camSegSet(mode){
+  document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cam===mode));
+}
+document.querySelectorAll('#viewSeg button').forEach(b=>{
+  b.onclick=()=>{
+    camSegSet(b.dataset.cam);
+    if(b.dataset.cam==='iso'){ state.yaw=52; state.pitch=21; }
+    if(b.dataset.cam==='side'){ state.yaw=-90; state.pitch=0; }
+    if(b.dataset.cam==='top'){ state.yaw=-90; state.pitch=80; }
+    markDirty();
+  };
+});
+
+document.getElementById('btnCamReset').onclick=()=>{
+  state.yaw=52; state.pitch=21; state.dist=6.4;
+  camSegSet('iso');
+  markDirty();
+};
+
+['tilt','azim','off'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('input',()=>{
+    if(id==='tilt') state.tilt=+el.value;
+    if(id==='azim') state.azim=+el.value;
+    if(id==='off') state.off=+el.value;
+    syncSliders();
+    refresh();
+  });
+});
+
+document.getElementById('density').addEventListener('input',e=>{
+  state.density=+e.target.value;
+  document.getElementById('densVal').textContent=state.density;
+  solid=buildSolid(state.type,state.density);
+  refresh();
+});
+
+/* 对比 */
+document.getElementById('btnCompare').onclick=function(){
+  state.compare=!state.compare;
+  this.classList.toggle('on',state.compare);
+  this.textContent = state.compare ? '取消对比' : '对比截面';
+  if(state.compare){
+    compareSec = section ? {pts:section.pts.map(p=>p.slice())} : null;
+  } else compareSec=null;
+  drawThumb(); markDirty();
+};
+
+/* 剖面存储 */
+function addSaved(){
+  if(!section || section.pts.length<3) return;
+  if(saved.length>=8) saved.shift();
+  saved.push({
+    name:sectionName(section),
+    perim:section.perim, area:section.area, n:section.pts.length,
+    tilt:state.tilt, azim:state.azim, off:state.off, type:state.type
+  });
+  renderSaved();
+}
+function renderSaved(){
+  const box=document.getElementById('savedList');
+  document.getElementById('savedCount').textContent=`${saved.length} / 8`;
+  if(!saved.length){
+    box.innerHTML='<p class="empty-note">还没有存过截面。调整好平面后按下方「记录当前截面」。</p>';
+  } else {
+    box.innerHTML=saved.map((s,i)=>`
+      <div class="saved-item" data-i="${i}">
+        <span class="idx">${String(i+1).padStart(2,'0')}</span>
+        <span class="nm">${s.name}</span>
+        <span class="mt">A ${s.area.toFixed(2)}</span>
+        <span class="del" data-del="${i}">×</span>
+      </div>`).join('');
+  }
+  const btn=document.getElementById('saveBtn');
+  if(btn) btn.textContent = '记录当前截面';
+  box.querySelectorAll('.saved-item').forEach(el=>{
+    el.onclick=(e)=>{
+      if(e.target.dataset.del!==undefined){
+        saved.splice(+e.target.dataset.del,1); renderSaved(); return;
+      }
+      const s=saved[+el.dataset.i];
+      state.type=s.type; state.tilt=s.tilt; state.azim=s.azim; state.off=s.off;
+      setSolid(s.type,false);
+    };
+  });
+}
+
+document.querySelectorAll('.tab-btn').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    const notes=[
+      '拖动滑杆移动切割平面；在视图中拖拽可旋转立体，滚轮缩放。',
+      '截面由平面与棱的交点求凸包得到，周长与面积按真实三维尺度计算。',
+      '纯前端单文件实现，无外部依赖；三视图按第一角投影绘制。'
+    ];
+    document.getElementById('panelNote').textContent=notes[+t.dataset.tab];
+  };
+});
+
+/* PNG 导出 */
+document.getElementById('btnPng').onclick=()=>{
+  const a=document.createElement('a');
+  a.download=`截面-${BASE[state.type].name}-${section?sectionName(section):'none'}.png`;
+  a.href=view.toDataURL('image/png');
+  a.click();
+};
+
+document.getElementById('btnResetAll').onclick=()=>{
+  state.yaw=52; state.pitch=21; state.dist=6.4;
+  state.compare=false; state.auto=false;
+  document.getElementById('btnAuto').classList.remove('on');
+  document.getElementById('btnCompare').classList.remove('on');
+  compareSec=null; camSegSet('iso');
+  setSolid('cube',true);
+};
+
+/* =========================================================
+   11. 三视图（第一角投影）
+   ========================================================= */
+const sheet=document.getElementById('sheetCanvas');
+const sctx=sheet.getContext('2d');
+
+function drawSheet(){
+  const W=1700,H=1202, ctx=sctx;
+  ctx.clearRect(0,0,W,H);
+
+  /* —— 纸面 —— */
+  const g=ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#f8f5ec'); g.addColorStop(.55,'#f3efe3'); g.addColorStop(1,'#ece7d9');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<2400;i++){
+    ctx.fillStyle=`rgba(120,110,90,${Math.random()*0.02})`;
+    ctx.fillRect(Math.random()*W, Math.random()*H, 1.2, 1.2);
+  }
+
+  const M=46;
+  ctx.strokeStyle='#2c2c26'; ctx.lineWidth=2.4;
+  ctx.strokeRect(M,M,W-2*M,H-2*M);
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(44,44,38,.32)';
+  ctx.strokeRect(M+9,M+9,W-2*M-18,H-2*M-18);
+
+  /* —— 抬头 —— */
+  ctx.textAlign='left';
+  ctx.fillStyle='#33322b';
+  ctx.font='600 23px "Songti SC",Georgia,serif';
+  ctx.fillText('三 视 图', M+40, M+64);
+  ctx.font='10px ui-monospace,monospace';
+  ctx.fillStyle='rgba(51,50,43,.5)';
+  ctx.fillText('ORTHOGRAPHIC PROJECTION · FIRST ANGLE', M+40, M+84);
+
+  ctx.textAlign='right';
+  ctx.font='11px ui-monospace,monospace';
+  ctx.fillStyle='rgba(51,50,43,.55)';
+  ctx.fillText(`立体  ${BASE[state.type].name}   ${BASE[state.type].en}`, W-M-40, M+56);
+  ctx.fillText(`比例 1:1   单位 mm   截面 ${section?sectionName(section):'—'}`, W-M-40, M+76);
+
+  /* —— 布局与比例 —— */
+  const views=[
+    {label:'主视图', en:'FRONT VIEW', cx:W*0.345, cy:H*0.315, toV:[0,-1,0], map:p=>[p[0],p[2]]},
+    {label:'侧视图', en:'SIDE VIEW',  cx:W*0.630, cy:H*0.315, toV:[-1,0,0], map:p=>[p[1],p[2]]},
+    {label:'俯视图', en:'TOP VIEW',   cx:W*0.345, cy:H*0.705, toV:[0,0,1],  map:p=>[p[0],-p[1]]}
+  ];
+  for(const v of views){
+    const pts=solid.verts.map(v.map);
+    const xs=pts.map(q=>q[0]), ys=pts.map(q=>q[1]);
+    v.minx=Math.min(...xs); v.maxx=Math.max(...xs);
+    v.miny=Math.min(...ys); v.maxy=Math.max(...ys);
+  }
+  const target=330;
+  let scale=Infinity;
+  for(const v of views) scale=Math.min(scale, target/Math.max(v.maxx-v.minx, v.maxy-v.miny, 1e-6));
+  scale*=0.94;
+  for(const v of views){ v.hw=(v.maxx-v.minx)*scale/2; v.hh=(v.maxy-v.miny)*scale/2; }
+
+  const [front, side, top] = views;
+
+  /* —— 投影辅助线 —— */
+  ctx.save();
+  ctx.setLineDash([8,6]); ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(150,143,125,.65)';
+  ctx.beginPath();
+  ctx.moveTo(front.cx+front.hw+8, front.cy);
+  ctx.lineTo(side.cx-side.hw-8, side.cy);
+  ctx.moveTo(front.cx, front.cy+front.hh+8);
+  ctx.lineTo(top.cx, top.cy-top.hh-8);
+  ctx.stroke();
+
+  const mx=side.cx, my=top.cy;
+  ctx.strokeStyle='rgba(150,143,125,.42)';
+  ctx.beginPath();
+  ctx.moveTo(side.cx, side.cy+side.hh+8); ctx.lineTo(side.cx, my-6);
+  ctx.moveTo(top.cx+top.hw+8, top.cy); ctx.lineTo(mx-6, my);
+  ctx.stroke();
+
+  ctx.setLineDash([10,7]);
+  ctx.strokeStyle='rgba(150,143,125,.5)';
+  ctx.beginPath();
+  ctx.moveTo(mx-140, my-140); ctx.lineTo(mx+118, my+118);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font='10px ui-monospace,monospace';
+  ctx.fillStyle='rgba(140,132,114,.9)';
+  ctx.textAlign='left';
+  ctx.fillText('45°', mx+58, my+48);
+  ctx.restore();
+
+  /* —— 三视图 —— */
+  for(const v of views){
+    const kx=(v.minx+v.maxx)/2, ky=(v.miny+v.maxy)/2;
+    const T=p=>{
+      const q=v.map(p);
+      return [v.cx+(q[0]-kx)*scale, v.cy-(q[1]-ky)*scale];
+    };
+
+    const vis=[], hid=[];
+    for(const e of solid.edges){
+      let hidden=false;
+      if(e.f.length) hidden = e.f.every(fi=>V.dot(solid.normals[fi], v.toV) < 0.001);
+      if(solid.smooth && e.f.length>1){
+        const a=V.dot(solid.normals[e.f[0]],v.toV)>0;
+        const b=V.dot(solid.normals[e.f[1]],v.toV)>0;
+        if(a===b && e.angle < 55) continue;
+      }
+      const A=T(solid.verts[e.a]), B=T(solid.verts[e.b]);
+      (hidden?hid:vis).push([A,B]);
+    }
+
+    // 中心线
+    ctx.save();
+    ctx.strokeStyle='rgba(80,78,66,.26)'; ctx.lineWidth=1;
+    ctx.setLineDash([16,5,3,5]);
+    ctx.beginPath();
+    ctx.moveTo(v.cx-v.hw-16, v.cy); ctx.lineTo(v.cx+v.hw+16, v.cy);
+    ctx.moveTo(v.cx, v.cy-v.hh-16); ctx.lineTo(v.cx, v.cy+v.hh+16);
+    ctx.stroke();
+    ctx.restore();
+
+    // 不可见轮廓
+    ctx.save();
+    ctx.setLineDash([6,4]);
+    ctx.strokeStyle='rgba(74,71,60,.42)'; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(const [A,B] of hid){ ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); }
+    ctx.stroke();
+    ctx.restore();
+
+    // 可见轮廓
+    ctx.strokeStyle='rgba(36,36,30,.92)'; ctx.lineWidth=1.7;
+    ctx.lineJoin='round';
+    ctx.beginPath();
+    for(const [A,B] of vis){ ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); }
+    ctx.stroke();
+
+    // 截面
+    if(section && section.pts.length>2){
+      const pp=section.pts.map(p=>T(p));
+      const h=hull2(pp);
+      if(h.length>2){
+        ctx.save();
+        ctx.setLineDash([3,3]);
+        ctx.strokeStyle='rgba(170,132,54,.75)'; ctx.lineWidth=1.2;
+        ctx.beginPath();
+        h.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));
+        ctx.closePath(); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 视图名
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(36,36,30,.92)';
+    ctx.font='600 15px "PingFang SC",sans-serif';
+    ctx.fillText(v.label, v.cx, v.cy+Math.max(v.hh,90)+48);
+    ctx.font='9px ui-monospace,monospace';
+    ctx.fillStyle='rgba(36,36,30,.42)';
+    ctx.fillText(v.en, v.cx, v.cy+Math.max(v.hh,90)+64);
+  }
+
+  /* —— 标题栏 —— */
+  const tw=364, th=152, tx=W-M-30-tw, ty=H-M-30-th;
+  ctx.fillStyle='rgba(255,255,255,.34)'; ctx.fillRect(tx,ty,tw,th);
+  ctx.strokeStyle='#2c2c26'; ctx.lineWidth=1.6; ctx.strokeRect(tx,ty,tw,th);
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(44,44,38,.55)';
+  ctx.beginPath();
+  ctx.moveTo(tx,ty+50); ctx.lineTo(tx+tw,ty+50);
+  ctx.moveTo(tx+tw/2,ty+50); ctx.lineTo(tx+tw/2,ty+th);
+  ctx.moveTo(tx,ty+101); ctx.lineTo(tx+tw,ty+101);
+  ctx.stroke();
+
+  ctx.textAlign='left';
+  ctx.fillStyle='#2c2c26';
+  ctx.font='600 16px "PingFang SC",sans-serif';
+  ctx.fillText(BASE[state.type].name, tx+16, ty+33);
+  ctx.textAlign='right';
+  ctx.font='9px ui-monospace,monospace';
+  ctx.fillStyle='rgba(44,44,38,.45)';
+  ctx.fillText(BASE[state.type].en, tx+tw-16, ty+33);
+
+  const cells=[
+    ['立体 / SOLID', BASE[state.type].name],
+    ['比例 / SCALE', '1 : 1'],
+    ['图号 / NO.', 'SL-'+String(saved.length+1).padStart(2,'0')],
+    ['日期 / DATE', '2026-10-22']
+  ];
+  cells.forEach((c,i)=>{
+    const col=i%2, row=Math.floor(i/2);
+    const x=tx+16+col*(tw/2), y=ty+50+row*51+20;
+    ctx.textAlign='left';
+    ctx.font='8px ui-monospace,monospace';
+    ctx.fillStyle='rgba(44,44,38,.42)';
+    ctx.fillText(c[0], x, y+4);
+    ctx.font='12px "PingFang SC",sans-serif';
+    ctx.fillStyle='rgba(30,29,24,.92)';
+    ctx.fillText(c[1], x, y+26);
+  });
+
+  /* —— 脚注 —— */
+  ctx.textAlign='left';
+  ctx.font='9px ui-monospace,monospace';
+  ctx.fillStyle='rgba(44,44,38,.4)';
+  ctx.fillText('第一角投影：主视图 = 正对 XOZ 面，侧视图 = 由左向右看，俯视图 = 由上向下看', M+40, H-M-22);
+}
+
+document.getElementById('btnSheet').onclick=()=>{
+  drawSheet();
+  document.getElementById('modal').classList.add('show');
+};
+document.getElementById('btnCloseModal').onclick=()=>{
+  document.getElementById('modal').classList.remove('show');
+};
+document.getElementById('modal').addEventListener('click',e=>{
+  if(e.target.id==='modal') e.target.classList.remove('show');
+});
+document.getElementById('btnSheetPng').onclick=()=>{
+  const a=document.createElement('a');
+  a.download=`三视图-${BASE[state.type].name}.png`;
+  a.href=sheet.toDataURL('image/png');
+  a.click();
+};
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape') document.getElementById('modal').classList.remove('show');
+  if(e.key==='r'||e.key==='R') state.yaw=52,state.pitch=21,state.dist=6.4,markDirty();
+});
+
+/* 记录按钮插到剖面存储标题下 */
+(function injectSaveBtn(){
+  const head=document.querySelectorAll('#savedList')[0].previousElementSibling;
+  const b=document.createElement('button');
+  b.id='saveBtn'; b.textContent='记录当前截面';
+  b.style.cssText='width:100%;height:28px;border:1px dashed rgba(122,160,214,.3);border-radius:6px;background:rgba(122,160,214,.04);color:#7d8da6;font-size:10.5px;cursor:pointer;letter-spacing:.06em;margin-bottom:7px;font-family:inherit;transition:.16s';
+  b.onmouseenter=()=>{ b.style.color='#f0d9a8'; b.style.borderColor='rgba(217,185,120,.5)'; };
+  b.onmouseleave=()=>{ b.style.color='#7d8da6'; b.style.borderColor='rgba(122,160,214,.3)'; };
+  b.onclick=addSaved;
+  head.after(b);
+})();
+
+/* =========================================================
+   12. 主循环
+   ========================================================= */
+let last=performance.now();
+function loop(t){
+  const dt=Math.min(50,t-last); last=t;
+  if(state.auto){
+    state.azim=(state.azim+dt*0.02)%360;
+    syncSliders();
+    refresh();
+  }
+  if(dirty){ dirty=false; render(); }
+  requestAnimationFrame(loop);
+}
+
+/* =========================================================
+   13. 启动
+   ========================================================= */
+buildUI();
+setSolid('cube', true);
+resize();
+new ResizeObserver(()=>{ resize(); drawThumb(); }).observe(document.getElementById('stage'));
+window.addEventListener('resize',()=>{ resize(); drawThumb(); });
+renderSaved();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
