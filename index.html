@@ -72,6 +72,16 @@
     grid-template-columns:274px minmax(0,1fr) 314px;
     gap:10px; padding:10px 12px 12px;
   }
+
+  /* ---------- 署名 ---------- */
+  .site-footer{
+    flex:none;
+    padding:7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
+    text-align:center;
+    font-family:var(--sans);
+    font-size:11px; line-height:1.5; letter-spacing:.04em;
+    color:var(--dim);
+  }
   .panel{
     background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
     border:1px solid var(--line); border-radius:11px;
@@ -720,6 +730,8 @@
     <span><i></i> 45° 投影辅助线</span>
   </div>
 </div>
+
+<footer class="site-footer">© 2026 swt · AI 辅助生成</footer>
 
 <script>
 /* =========================================================
