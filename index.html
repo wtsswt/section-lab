@@ -89,6 +89,7 @@
 
   /* ---------- solid grid ---------- */
   .solid-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .hidden-block{display:none;}
   .solid-btn{
     position:relative;aspect-ratio:1/1.06;border:1px solid var(--line-soft);border-radius:8px;
     background:rgba(122,160,214,.025);display:flex;flex-direction:column;align-items:center;
@@ -512,13 +513,15 @@
   <!-- ============ LEFT ============ -->
   <aside class="panel">
     <div class="panel-scroll">
-      <div class="sec-head"><h3>选择立体</h3><span>8 SOLIDS</span></div>
+      <div class="sec-head"><h3>选择立体</h3><span>10 SOLIDS</span></div>
       <div class="solid-grid" id="solidGrid"></div>
 
-      <div class="sec-head" style="margin-top:16px"><h3>面数密度</h3><em id="densVal">12</em></div>
-      <div class="slider-row" style="margin-top:0">
-        <input type="range" id="density" min="6" max="36" step="1" value="12">
-        <p class="hint" id="densHint">细分面数越多，越接近真实曲面。</p>
+      <div id="faceWrap" class="hidden-block">
+        <div class="sec-head" style="margin-top:16px"><h3>底面棱数</h3><em id="faceVal">6</em></div>
+        <div class="slider-row" style="margin-top:0">
+          <input type="range" id="faces" min="3" max="16" step="1" value="6">
+          <p class="hint" id="faceHint">只作用于棱柱 / 棱锥，改变底面正多边形的边数。</p>
+        </div>
       </div>
 
       <div class="sec-head" style="margin-top:14px"><h3>推荐实验</h3><span>EXPERIMENTS</span></div>
@@ -787,8 +790,13 @@ function polyVerts(key){
   return null;
 }
 
-function buildSolid(key, density){
+const SEG_ROUND = 72;   // 回转体的固定细分段数（不再向用户暴露）
+const PRISM = {r:1.00, h:1.14};                  // 正棱柱：底面外接圆半径、半高
+const PYR   = {r:1.16, hb:0.92, apex:1.32};      // 正棱锥：底面外接圆半径、底 z、顶点 z
+
+function buildSolid(key, faceN){
   let verts, faces, smooth=false;
+  const nFace = clamp(Math.round(faceN||6), 3, 16);
 
   if(key==='sphere'){
     const R=1.42, LA=9, LO=18, rings=[], v=[];
@@ -825,7 +833,7 @@ function buildSolid(key, density){
     verts=v; smooth=true;
   }
   else if(key==='cylinder'){
-    const n=density, r=0.94, h=1.14, v=[], fc=[];
+    const n=SEG_ROUND, r=0.94, h=1.14, v=[], fc=[];
     for(let i=0;i<n;i++){
       const a=2*Math.PI*i/n;
       v.push([r*Math.cos(a), r*Math.sin(a), -h]);
@@ -844,7 +852,7 @@ function buildSolid(key, density){
     verts=v; faces=fc; smooth=true;
   }
   else if(key==='cone'){
-    const n=density, r=1.06, h=0.86, v=[], fc=[];
+    const n=SEG_ROUND, r=1.06, h=0.86, v=[], fc=[];
     for(let i=0;i<n;i++){
       const a=2*Math.PI*i/n;
       v.push([r*Math.cos(a), r*Math.sin(a), -h]);
@@ -856,6 +864,39 @@ function buildSolid(key, density){
     fc.push(base);
     verts=v; faces=fc; smooth=true;
   }
+  else if(key==='prism'){
+    // 正 n 棱柱：与圆柱同高，侧棱真实存在，截面必然是多边形
+    const n=nFace, r=PRISM.r, h=PRISM.h, v=[], fc=[];
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n + Math.PI/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), -h]);
+    }
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n + Math.PI/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), h]);
+    }
+    for(let i=0;i<n;i++){
+      const i2=(i+1)%n;
+      fc.push([i, i2, n+i2, n+i]);
+    }
+    const bottom=[]; for(let i=n-1;i>=0;i--) bottom.push(i);
+    const top=[]; for(let i=0;i<n;i++) top.push(n+i);
+    fc.push(bottom); fc.push(top);
+    verts=v; faces=fc;
+  }
+  else if(key==='pyramid'){
+    const n=nFace, r=PYR.r, hb=PYR.hb, v=[], fc=[];
+    for(let i=0;i<n;i++){
+      const a=2*Math.PI*i/n + Math.PI/n;
+      v.push([r*Math.cos(a), r*Math.sin(a), -hb]);
+    }
+    v.push([0,0,PYR.apex]);
+    const apex=v.length-1;
+    for(let i=0;i<n;i++) fc.push([i, (i+1)%n, apex]);
+    const base=[]; for(let i=n-1;i>=0;i--) base.push(i);
+    fc.push(base);
+    verts=v; faces=fc;
+  }
   else {
     verts = polyVerts(key);
     faces = hullFaces(verts);
@@ -866,7 +907,7 @@ function buildSolid(key, density){
   const edges = buildEdges(verts, faces, normals);
   const centers = faces.map(f=>f.reduce((s,i)=>V.add(s,verts[i]),[0,0,0]).map(x=>x/f.length));
 
-  return {key, verts, faces, normals, edges, centers, smooth, density,
+  return {key, verts, faces, normals, edges, centers, smooth, faceN: nFace,
           nv:verts.length, ne:edges.length, nf:faces.length};
 }
 
@@ -879,7 +920,9 @@ const BASE = {
   icosa:     {name:'正二十面体',en:'ICOSAHEDRON', kicker:'SOLID · PLATONIC · ICOSAHEDRON'},
   cylinder:  {name:'圆柱',      en:'CYLINDER',    kicker:'SOLID · QUADRIC · CYLINDER'},
   cone:      {name:'圆锥',      en:'CONE',        kicker:'SOLID · QUADRIC · CONE'},
-  sphere:    {name:'球',        en:'SPHERE',      kicker:'SOLID · QUADRIC · SPHERE'}
+  sphere:    {name:'球',        en:'SPHERE',      kicker:'SOLID · QUADRIC · SPHERE'},
+  prism:     {name:'正棱柱',    en:'PRISM',       kicker:'SOLID · POLYHEDRON · PRISM'},
+  pyramid:   {name:'正棱锥',    en:'PYRAMID',     kicker:'SOLID · POLYHEDRON · PYRAMID'}
 };
 
 /* =========================================================
@@ -1121,7 +1164,7 @@ function classifySection(solid, plane, sec){
   const nm=sectionName(sec);
   return {
     name:nm,
-    rule:`截平面与 ${sec.pts.length} 个面相交，截交线是 ${cnNum(sec.pts.length)} 条线段的闭合折线`,
+    rule:`截平面与 ${sec.pts.length} 个面相交 → 截交线为${nm}，${cnNum(sec.pts.length)}个顶点都落在棱上`,
     size: info.regular
       ? `边长 ${info.lmin.toFixed(2)} · 内角 ${info.ang.toFixed(1)}°`
       : `边长 ${info.lmin.toFixed(2)}–${info.lmax.toFixed(2)} · 内角 ${info.amin.toFixed(1)}°–${info.amax.toFixed(1)}°`
@@ -1210,6 +1253,8 @@ function cnNum(n){
   const t=Math.floor(n/10), o=n%10;
   return CN[t]+'十'+(o?CN[o]:'');
 }
+/* 边数 → 平面图形名，三边形按习惯称三角形 */
+function polyName(n){ return n===3 ? '三角形' : cnNum(n)+'边形'; }
 function sectionName(sec){
   if(sec.circle) return '圆';
   const pts = sec.pts;
@@ -1226,14 +1271,14 @@ function sectionName(sec){
   const lmin=Math.min(...lens), lmax=Math.max(...lens);
   const amin=Math.min(...angs), amax=Math.max(...angs);
   const regular = (lmax-lmin)/Math.max(lmax,1e-6) < 0.055 && (amax-amin) < 5;
-  return (regular?'正':'')+cnNum(n)+'边形';
+  return (regular?'正':'')+polyName(n);
 }
 
 /* =========================================================
    4. 状态
    ========================================================= */
 const state = {
-  type:'cube', density:24,
+  type:'cube', faces:6,
   tilt:54.7, azim:45, off:0,
   yaw:52, pitch:21, dist:6.4,
   showEdges:true, showPlane:true,
@@ -1410,8 +1455,13 @@ function render(){
       }
       const sil = e.f.length>1 && facing[e.f[0]] !== facing[e.f[1]];
       let alpha;
-      if(solid.smooth) alpha = sil ? 0.42 : (e.sharp ? 0.2 : 0.07);
+      if(solid.smooth){
+        // 圆柱 / 圆锥按曲面处理：只留轮廓线与锐边，内部细分线不再画出
+        const grid = (solid.key==='sphere') ? 0.07 : 0;
+        alpha = sil ? 0.42 : (e.sharp ? 0.2 : grid);
+      }
       else alpha = vis ? 0.62 : 0.2;
+      if(alpha<=0) continue;
       ctx.strokeStyle = `rgba(146,180,228,${alpha})`;
       ctx.lineWidth = (vis||sil) ? 1.05 : 0.8;
       ctx.beginPath();
@@ -1589,33 +1639,39 @@ const ICONS = {
   icosa:'<path d="M12 3.4 20.4 17.6H3.6z"/><path d="M7.6 9.4h8.8M12 3.4l-3.4 6M12 3.4l3.4 6M3.6 17.6l4-8.2M20.4 17.6l-4-8.2M8.4 17.6 7.6 9.4M15.6 17.6l.8-8.2"/>',
   cylinder:'<ellipse cx="12" cy="7" rx="7.2" ry="3"/><path d="M4.8 7v10c0 1.66 3.22 3 7.2 3s7.2-1.34 7.2-3V7"/>',
   cone:'<path d="M12 3.4 20 18.4M12 3.4 4 18.4"/><ellipse cx="12" cy="18.4" rx="8" ry="3"/>',
-  sphere:'<circle cx="12" cy="12" r="8.4"/><ellipse cx="12" cy="12" rx="8.4" ry="3.1"/><path d="M12 3.6c-4 4-4 12.8 0 16.8M12 3.6c4 4 4 12.8 0 16.8"/>'
+  sphere:'<circle cx="12" cy="12" r="8.4"/><ellipse cx="12" cy="12" rx="8.4" ry="3.1"/><path d="M12 3.6c-4 4-4 12.8 0 16.8M12 3.6c4 4 4 12.8 0 16.8"/>',
+  prism:'<path d="M8 4.4h8l3.6 3.3-3.6 3.3H8L4.4 7.7z"/><path d="M4.4 7.7v7.9l3.6 3.2h8l3.6-3.2V7.7"/><path d="M8 11v7.8M16 11v7.8"/>',
+  pyramid:'<path d="M12 3.4 3.6 15.9 12 20.6l8.4-4.7z"/><path d="M3.6 15.9h16.8M12 3.4v17.2"/>'
 };
-const ORDER = ['cube','tetra','octa','dodeca','icosa','cylinder','cone','sphere'];
+const ORDER = ['cube','tetra','octa','dodeca','icosa','cylinder','cone','sphere','prism','pyramid'];
 
 function buildUI(){
-  const grid=document.getElementById('solidGrid');
-  grid.innerHTML = ORDER.map(k=>`
-    <button class="solid-btn${state.type===k?' on':''}" data-solid="${k}">
-      ${k==='cube'?'<span class="badge-rec">推荐</span>':''}
-      <svg viewBox="0 0 24 24">${ICONS[k]}</svg>
-      <i>${BASE[k].name}</i>
-    </button>`).join('');
+  const fill=(box,keys)=>{
+    box.innerHTML = keys.map(k=>`
+      <button class="solid-btn${state.type===k?' on':''}" data-solid="${k}">
+        ${k==='cube'?'<span class="badge-rec">推荐</span>':''}
+        <svg viewBox="0 0 24 24">${ICONS[k]}</svg>
+        <i>${BASE[k].name}</i>
+      </button>`).join('');
+  };
+  fill(document.getElementById('solidGrid'), ORDER);
 
-  grid.querySelectorAll('.solid-btn').forEach(b=>{
+  document.querySelectorAll('.solid-btn').forEach(b=>{
     b.onclick=()=>{ setSolid(b.dataset.solid); };
   });
 
   const presets=[
     {t:'看一切正方体的截面', s:'cube',     tilt:54.7, azim:45, off:0,   tag:'正方体 · 正六边形'},
     {t:'把圆柱切出椭圆',     s:'cylinder', tilt:52,   azim:0,  off:0,   tag:'圆柱 · 斜切'},
-    {t:'与斜切的圆锥对谈',   s:'cone',     tilt:58,   azim:20, off:0.18,tag:'圆锥 · 椭圆 / 双曲线'}
+    {t:'与斜切的圆锥对谈',   s:'cone',     tilt:58,   azim:20, off:0.18,tag:'圆锥 · 椭圆 / 双曲线'},
+    {t:'斜切正六棱柱',       s:'prism',    tilt:58,   azim:30, off:0,   tag:'棱柱 · 截面仍是多边形', faces:6}
   ];
   const pbox=document.getElementById('presets');
   pbox.innerHTML = presets.map((p,i)=>`<div class="preset" data-i="${i}"><b>${p.t}</b><span>${p.tag}</span></div>`).join('');
   pbox.querySelectorAll('.preset').forEach(el=>{
     el.onclick=()=>{
       const p=presets[+el.dataset.i];
+      if(p.faces) state.faces=p.faces;
       setSolid(p.s, false);
       state.tilt=p.tilt; state.azim=p.azim; state.off=p.off;
       syncSliders(); refresh();
@@ -1630,8 +1686,8 @@ function syncSliders(){
   document.getElementById('vTilt').textContent=state.tilt.toFixed(1)+'°';
   document.getElementById('vAzim').textContent=Math.round(state.azim)+'°';
   document.getElementById('vOff').textContent=state.off.toFixed(2);
-  document.getElementById('density').value=state.density;
-  document.getElementById('densVal').textContent=state.density;
+  document.getElementById('faces').value=state.faces;
+  document.getElementById('faceVal').textContent=state.faces;
 }
 
 /* =========================================================
@@ -1639,13 +1695,12 @@ function syncSliders(){
    ========================================================= */
 function setSolid(key, resetPlane){
   state.type=key;
-  solid = buildSolid(key, state.density);
+  solid = buildSolid(key, state.faces);
   document.querySelectorAll('.solid-btn').forEach(b=>b.classList.toggle('on', b.dataset.solid===key));
-  const densOn = (key==='cylinder'||key==='cone');
-  document.getElementById('density').disabled = !densOn;
-  document.getElementById('densHint').textContent = densOn
-    ? '只影响侧面轮廓的细分程度；截交线按解析曲线求解，不随此值变化。'
-    : '多面体使用精确平面，密度滑杆仅对圆柱 / 圆锥生效。';
+
+  // 棱数滑杆只对棱柱 / 棱锥有意义，其余立体整块隐藏，不留灰掉的控件
+  const prismatic = (key==='prism'||key==='pyramid');
+  document.getElementById('faceWrap').classList.toggle('hidden-block', !prismatic);
 
   if(resetPlane!==false){
     if(key==='cube'){ state.tilt=54.7; state.azim=45; state.off=0; }
@@ -1664,12 +1719,18 @@ function refresh(){
   // 标题
   const base=BASE[solid.key];
   let name=base.name, meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面`;
-  if(solid.key==='cylinder'){
-    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 以${cnNum(state.density)}棱柱逼近`;
+  if(solid.key==='prism'){
+    name=`正${cnNum(solid.faceN)}棱柱`;
+    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 底面${polyName(solid.faceN)}`;
+  } else if(solid.key==='pyramid'){
+    name=`正${cnNum(solid.faceN)}棱锥`;
+    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 底面${polyName(solid.faceN)}`;
+  } else if(solid.key==='cylinder'){
+    meta='曲面 · 半径 0.94 · 高 2.28 · 截交线解析求解';
   } else if(solid.key==='cone'){
-    meta=`${solid.nv} 个顶点 · ${solid.ne} 条棱 · ${solid.nf} 个面 · 以${cnNum(state.density)}棱锥逼近`;
+    meta='曲面 · 底半径 1.06 · 高 2.14 · 截交线解析求解';
   } else if(solid.key==='sphere'){
-    meta='曲面 · 经纬 9×18 细分 · 半径 1.42';
+    meta='曲面 · 半径 1.42 · 截交线恒为圆';
   }
   document.getElementById('shapeName').textContent=name;
   document.getElementById('shapeKicker').textContent=base.kicker;
@@ -1820,10 +1881,10 @@ document.getElementById('btnCamReset').onclick=()=>{
   });
 });
 
-document.getElementById('density').addEventListener('input',e=>{
-  state.density=+e.target.value;
-  document.getElementById('densVal').textContent=state.density;
-  solid=buildSolid(state.type,state.density);
+document.getElementById('faces').addEventListener('input',e=>{
+  state.faces=+e.target.value;
+  document.getElementById('faceVal').textContent=state.faces;
+  solid=buildSolid(state.type,state.faces);
   refresh();
 });
 
