@@ -307,6 +307,11 @@
   .gold-btn:hover{filter:brightness(1.06);}
   .gold-btn:active{transform:translateY(1px);}
   .foot-note{font-size:9.5px;line-height:1.65;color:var(--faint);margin-top:9px;}
+  .ortho-card{
+    border:1px solid var(--line-soft);border-radius:9px;padding:4px;
+    background:radial-gradient(130% 110% at 50% 0%,rgba(122,160,214,.06),rgba(6,10,18,.5));
+  }
+  .ortho-card canvas{display:block;width:100%;height:248px;}
 
   @media (max-width:1180px){
     .app{grid-template-columns:232px minmax(0,1fr) 268px;gap:8px;padding:8px;}
@@ -669,6 +674,10 @@
         <div class="crit" style="border-color:rgba(122,160,214,.18)">
           <p id="pcNote">相贯线上的最高点、最低点是转向轮廓线上的点，作图时先求出它们再连曲线。</p>
         </div>
+
+        <div class="sec-head" style="margin-top:14px"><h3>三视图</h3><span>ORTHOGRAPHIC</span></div>
+        <div class="ortho-card"><canvas id="ortho"></canvas></div>
+        <p class="foot-note">第一角投影，长对正 · 高平齐 · 宽相等。金色为相贯线投影，虚线为被遮挡的轮廓。</p>
       </div>
 
       <div class="sec-head" style="margin-top:14px"><h3>视角</h3><span>CAMERA</span></div>
@@ -1354,12 +1363,13 @@ let solid = null, section = null, lastCls = null;
 let compareSec = null;
 let saved = [];
 let dirty = true;
+let fastRender = false;   // 拖拽中：降低网格密度
 const markDirty = ()=>{ dirty = true; };
 
 /* =========================================================
    5. 相机 / 投影
    ========================================================= */
-function makeCam(w,h){
+function makeCam(w,h,ortho){
   const yaw=state.yaw*DEG, pitch=state.pitch*DEG;
   const eye=[state.dist*Math.cos(pitch)*Math.cos(yaw),
              state.dist*Math.cos(pitch)*Math.sin(yaw),
@@ -1369,11 +1379,16 @@ function makeCam(w,h){
   if(Math.abs(V.dot(f,up))>0.995) up=[0,1,0];
   const r=V.norm(V.cross(f,up));
   const u=V.cross(r,f);
-  return {eye,f,r,u,focal:Math.min(w,h)*1.34, cx:w/2, cy:h*0.5};
+  // 正交模式：投影像素比例 = 透视在视点处的比例，尺寸一致但去除近大远小
+  const base=Math.min(w,h)*1.34;
+  return {eye,f,r,u,focal: ortho? base/Math.max(state.dist,.1) : base, ortho:!!ortho, cx:w/2, cy:h*0.5};
 }
 function proj(cam,p){
   const q=V.sub(p,cam.eye);
   const z=V.dot(q,cam.f);
+  if(cam.ortho){
+    return {x:cam.cx+V.dot(q,cam.r)*cam.focal, y:cam.cy-V.dot(q,cam.u)*cam.focal, z};
+  }
   const k=cam.focal/Math.max(z,0.05);
   return {x:cam.cx+V.dot(q,cam.r)*k, y:cam.cy-V.dot(q,cam.u)*k, z};
 }
@@ -1503,10 +1518,6 @@ function tubeFrame(axis){
   return {a,e1,e2};
 }
 
-/* 实体内点判定：用于在两立体上互相挖孔 */
-function insideA(p){
-  return p[0]*p[0]+p[1]*p[1] < PIPE_A.R*PIPE_A.R && Math.abs(p[2]) < PIPE_A.H;
-}
 function insideB(p){
   if(pipe.type==='sphere'){
     const dx=p[0], dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
@@ -1518,6 +1529,28 @@ function insideB(p){
 
 const TINT_A={front:'rgba(74,114,180,.30)', back:'rgba(40,66,110,.13)', rim:'rgba(150,184,230,.62)'};
 const TINT_B={front:'rgba(206,176,122,.07)', back:'rgba(180,142,84,.03)', rim:'rgba(206,176,122,.34)'};
+
+/* 用另一实体的内部区域裁剪面片：逐边二分求交点，切边与真实相贯线一致。
+   直接按面片中心跳过会留下方块状缺口（转动视角时像马赛克），这里改真裁剪。 */
+function clipPolyBy(pts, inside){
+  const n=pts.length, out=[];
+  for(let i=0;i<n;i++){
+    const a=pts[i], b=pts[(i+1)%n];
+    const ia=inside(a), ib=inside(b);
+    if(!ia) out.push(a);
+    if(ia!==ib){
+      let l=0, r=1;
+      for(let k=0;k<22;k++){
+        const m=(l+r)/2;
+        const p=[a[0]+(b[0]-a[0])*m, a[1]+(b[1]-a[1])*m, a[2]+(b[2]-a[2])*m];
+        if(inside(p)===ia) l=m; else r=m;
+      }
+      const m=(l+r)/2;
+      out.push([a[0]+(b[0]-a[0])*m, a[1]+(b[1]-a[1])*m, a[2]+(b[2]-a[2])*m]);
+    }
+  }
+  return out;
+}
 
 function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
   const {a,e1,e2}=tubeFrame(axis);
@@ -1539,39 +1572,19 @@ function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
     // 轴向再分段：否则一个面片是整条母线长的长条，挖孔会挖掉整条竖带
     for(let k=0;k<nSeg;k++){
       const s0=-halfLen+2*halfLen*k/nSeg, s1=-halfLen+2*halfLen*(k+1)/nSeg;
-      const mid=ring(tm,(s0+s1)/2);
-      const P=[proj(cam,ring(t0,s1)),proj(cam,ring(t1,s1)),
-               proj(cam,ring(t1,s0)),proj(cam,ring(t0,s0))];
-      quads.push({pts:P, fill:f?tint.front:tint.back,
-                  z:(P[0].z+P[1].z+P[2].z+P[3].z)/4,
-                  skip: holes ? holes(mid) : false});
+      let poly=[ring(t0,s0), ring(t1,s0), ring(t1,s1), ring(t0,s1)];
+      if(holes){
+        poly=clipPolyBy(poly,holes);
+        if(poly.length<3) continue;
+      }
+      const P=poly.map(q=>proj(cam,q));
+      let zs=0; for(const q of P) zs+=q.z;
+      quads.push({pts:P, z:zs/P.length, n:nrm});
     }
   }
   const seams=[];
   for(let i=0;i<N;i++) if(face[i]!==face[(i+1)%N]) seams.push(2*Math.PI*(i+1)/N);
   return {quads, seams, ring, tint, holes, halfLen, N};
-}
-
-function ballBundle(cam, center, R, tint, holes){
-  const LA=20, LO=36;
-  const pt=(th,ph)=>[center[0]+R*Math.sin(ph)*Math.cos(th),
-                     center[1]+R*Math.sin(ph)*Math.sin(th),
-                     center[2]+R*Math.cos(ph)];
-  const quads=[];
-  for(let a=0;a<LA;a++){
-    for(let b=0;b<LO;b++){
-      const ph0=Math.PI*a/LA, ph1=Math.PI*(a+1)/LA;
-      const th0=2*Math.PI*b/LO, th1=2*Math.PI*(b+1)/LO;
-      const mid=pt((th0+th1)/2,(ph0+ph1)/2);
-      if(V.dot(V.norm(V.sub(mid,center)), V.sub(cam.eye,mid))<=0) continue;
-      const P=[proj(cam,pt(th0,ph0)),proj(cam,pt(th1,ph0)),
-               proj(cam,pt(th1,ph1)),proj(cam,pt(th0,ph1))];
-      quads.push({pts:P, fill:tint.front,
-                  z:(P[0].z+P[1].z+P[2].z+P[3].z)/4,
-                  skip: holes ? holes(mid) : false});
-    }
-  }
-  return {quads, seams:[], ring:null, tint, holes, halfLen:0, N:0, ball:{center,R}};
 }
 
 function strokeBundle(cam, ctx, bd){
@@ -1644,27 +1657,287 @@ function drawPierceCurves(cam, ctx){
   }
 }
 
-function renderPierce(ctx){
-  const cam=makeCam(W,H);
-  const A=tubeBundle(cam,[0,0,0],[0,0,1],PIPE_A.R,PIPE_A.H,64,22,TINT_A, insideB);
-  const B=(pipe.type==='sphere')
-    ? ballBundle(cam,[0,pipe.e,pipe.z0],pipe.R,TINT_B, insideA)
-    : tubeBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,48,18,TINT_B, null);
-
-  // 两个立体的面片统一按深度排序，遮挡关系才正确；主体上被从体占住的面片挖空成孔
-  const all=A.quads.concat(B.quads).sort((u,v)=>v.z-u.z);
-  for(const q of all){
-    if(q.skip) continue;
-    ctx.beginPath();
-    q.pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-    ctx.closePath();
-    ctx.fillStyle=q.fill;
-    ctx.fill();
+/* 实体着色：每个立体先画进自己的离屏画布，层内一律用不透明色（同色描边收边），
+   相邻面片之间不会漏出背景——逐片半透明填色时，片与片的交界漏 1px 背景，
+   密排起来就是一层网格状的马赛克。整层再按统一透明度合成，主体仍可透出后面的从体。 */
+const TINT_RGB={A:[96,140,208], B:[224,196,148]};
+const layerBuf={A:null,B:null};
+function bufFor(key){
+  const w=Math.round(W*DPR), h=Math.round(H*DPR);
+  let c=layerBuf[key];
+  if(!c){ c=layerBuf[key]=document.createElement('canvas'); }
+  if(c.width!==w||c.height!==h){ c.width=w; c.height=h; }
+  return c;
+}
+function layerCtx(key){
+  const cv=bufFor(key), g=cv.getContext('2d');
+  g.setTransform(1,0,0,1,0,0);
+  g.clearRect(0,0,cv.width,cv.height);
+  g.setTransform(DPR,0,0,DPR,0,0);
+  return g;
+}
+function paintTubeLayer(key, quads, cam){
+  const g=layerCtx(key), base=TINT_RGB[key];
+  const vd=V.mul(cam.f,-1);
+  const order=quads.slice().sort((a,b)=>b.z-a.z);
+  for(const q of order){
+    const k=0.44+0.56*Math.max(0,V.dot(q.n||[0,0,1],vd));
+    const col=`rgb(${Math.round(base[0]*k)},${Math.round(base[1]*k)},${Math.round(base[2]*k)})`;
+    g.beginPath();
+    q.pts.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));
+    g.closePath();
+    g.fillStyle=col; g.fill();
+    g.strokeStyle=col; g.lineWidth=2; g.stroke();   // 同色描边盖住相邻面片之间 1px 的缝
   }
+}
+/* 球的投影就是圆，用径向渐变直接着到层里：比逐面片平涂顺，也没有纬度带 */
+function paintBallLayer(key, center, R, cam){
+  const g=layerCtx(key), base=TINT_RGB[key];
+  const c=proj(cam,center), r=R*cam.focal;
+  const grad=g.createRadialGradient(c.x-r*0.30,c.y-r*0.34,r*0.05,c.x,c.y,r*1.02);
+  const mix=k=>`rgb(${Math.round(base[0]*k)},${Math.round(base[1]*k)},${Math.round(base[2]*k)})`;
+  grad.addColorStop(0,mix(1));
+  grad.addColorStop(0.60,mix(0.72));
+  grad.addColorStop(1,mix(0.40));
+  g.beginPath(); g.arc(c.x,c.y,r,0,Math.PI*2);
+  g.fillStyle=grad; g.fill();
+  g.strokeStyle='rgba(214,186,136,.34)'; g.lineWidth=1.2; g.stroke();
+}
+
+function renderPierce(ctx){
+  // 相贯用正交投影：透视会给沿轴向伸展的从体带来近大远小，圆柱看着像圆台
+  const cam=makeCam(W,H,true);
+  // 转动视角时先降网格密度，松手后再补一帧满精度，手机上也跟得上
+  const lo = fastRender ? 0.55 : 1;
+  // 主体上被从体占住的面片裁掉（挖孔），否则不透明的壁会把从体整个盖住，看不出"穿墙"
+  const A=tubeBundle(cam,[0,0,0],[0,0,1],PIPE_A.R,PIPE_A.H,Math.round(96*lo),Math.round(34*lo),TINT_A, insideB);
+  const isBall = pipe.type==='sphere';
+  const B = isBall ? null
+    : tubeBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,Math.round(56*lo),Math.round(24*lo),TINT_B, null);
+
+  paintTubeLayer('A',A.quads,cam);
+  if(isBall) paintBallLayer('B',[0,pipe.e,pipe.z0],pipe.R,cam);
+  else paintTubeLayer('B',B.quads,cam);
+
+  // 球比主体大时会成片压住主体的壁，所以球画在壁的下面（透过壁看球）；
+  // 从体是细圆柱时反过来，管子的近侧表面本来就在壁的前面
+  ctx.save();
+  if(isBall){
+    ctx.globalAlpha=0.30; ctx.drawImage(bufFor('B'),0,0,W,H);
+    ctx.globalAlpha=0.33; ctx.drawImage(bufFor('A'),0,0,W,H);
+  }else{
+    ctx.globalAlpha=0.33; ctx.drawImage(bufFor('A'),0,0,W,H);
+    ctx.globalAlpha=0.24; ctx.drawImage(bufFor('B'),0,0,W,H);
+  }
+  ctx.restore();
+
   strokeBundle(cam,ctx,A);
-  strokeBundle(cam,ctx,B);
+  if(B) strokeBundle(cam,ctx,B);
   drawPierceCurves(cam,ctx);
   drawAxis(ctx,cam);
+}
+
+/* =========================================================
+   5.6 三视图（第一角投影：主视 / 俯视 / 左视）
+   ========================================================= */
+/* 三个视图共用同一套比例与轴对齐：主视↔俯视 长对正，主视↔左视 高平齐 */
+function orthoBox(){
+  return {
+    xr: Math.max(PIPE_A.R, pipe.L) + 0.08,
+    zr: Math.max(PIPE_A.H, Math.abs(pipe.z0) + pipe.R) + 0.08,
+    yr: Math.max(PIPE_A.R, Math.abs(pipe.e) + pipe.R) + 0.08,
+    gap: 0.46
+  };
+}
+
+function rectPoly(u0,u1,v0,v1){ return [[u0,v0],[u1,v0],[u1,v1],[u0,v1]]; }
+function circlePoly(cu,cv,r,seg){
+  const p=[]; const n=seg||96;
+  for(let i=0;i<n;i++){ const t=2*Math.PI*i/n; p.push([cu+r*Math.cos(t), cv+r*Math.sin(t)]); }
+  return p;
+}
+
+/* 每个视图中两个立体的投影轮廓（uv 坐标）与其覆盖区域 */
+function orthoShape(view){
+  const R1=PIPE_A.R, Hp=PIPE_A.H, R2=pipe.R, z0=pipe.z0, e=pipe.e, L=pipe.L;
+  const A = view==='top'
+    ? {poly:circlePoly(0,0,R1,128), inside:(u,v)=>u*u+v*v<=R1*R1+1e-9}
+    : {poly:rectPoly(-R1,R1,-Hp,Hp), inside:(u,v)=>Math.abs(u)<=R1+1e-9&&Math.abs(v)<=Hp+1e-9};
+  let B;
+  if(view==='front'){
+    B = pipe.type==='sphere'
+      ? {poly:circlePoly(0,-z0,R2), inside:(u,v)=>u*u+(v+z0)*(v+z0)<=R2*R2+1e-9}
+      : {poly:rectPoly(-L,L,-z0-R2,-z0+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+z0)<=R2+1e-9};
+  }else if(view==='top'){
+    B = pipe.type==='sphere'
+      ? {poly:circlePoly(0,-e,R2), inside:(u,v)=>u*u+(v+e)*(v+e)<=R2*R2+1e-9}
+      : {poly:rectPoly(-L,L,-e-R2,-e+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+e)<=R2+1e-9};
+  }else{
+    B = {poly:circlePoly(e,-z0,R2), inside:(u,v)=>(u-e)*(u-e)+(v+z0)*(v+z0)<=R2*R2+1e-9};
+  }
+  return {A,B};
+}
+
+/* 相贯线在正交视图里是否可见：两块表面都必须朝向观察者（与透视版同一判据） */
+function curveVisibleAt(p, d){
+  const nA=[p[0],p[1],0], ln=Math.hypot(nA[0],nA[1])||1;
+  if((-d[0]*nA[0]-d[1]*nA[1]-d[2]*nA[2])/ln < -1e-7) return false;
+  const nB=pipeNormal(p);
+  return -(d[0]*nB[0]+d[1]*nB[1]+d[2]*nB[2]) >= -1e-7;
+}
+
+/* 轮廓上一点被另一立体挡住？沿视线反方向行进，看是否与该立体表面相交。
+   注意轮廓所在的 3D 点取在"过立体中心、垂直于视线"的那个截面上（顶视取上沿）。 */
+function surfPoint3(view, which, u, v){
+  if(which==='A'){
+    if(view==='front') return [u, 0, -v];
+    if(view==='left')  return [0, u, -v];
+    return [u, -v, PIPE_A.H];
+  }
+  if(pipe.type==='sphere'){
+    if(view==='front') return [u, pipe.e, -v];
+    if(view==='left')  return [0, u, -v];
+    return [u, -v, pipe.z0];
+  }
+  if(view==='front') return [u, pipe.e, -v];
+  if(view==='top')   return [u, -v, pipe.z0];
+  return [-pipe.L, u, -v];
+}
+
+function occludedAt(u, v, view, other){
+  const p = surfPoint3(view, other==='B'?'A':'B', u, v);   // 被谁挡就取谁的对面那个立体的点
+  const vd = view==='front' ? [0,-1,0] : view==='left' ? [-1,0,0] : [0,0,1];
+  return rayHits(p, vd, other);
+}
+
+/* 从 p 沿 vd 出发，是否与立体 key 的表面相交（含从内部射出）。 */
+function rayHits(p, vd, key){
+  const step=0.04, N=100;
+  let prev=null;
+  for(let i=1;i<=N;i++){
+    const t=i*step;
+    const x=p[0]+vd[0]*t, y=p[1]+vd[1]*t, z=p[2]+vd[2]*t;
+    let f, ok=true;
+    if(key==='A'){
+      if(Math.abs(z)>PIPE_A.H) ok=false;
+      f=x*x+y*y-PIPE_A.R*PIPE_A.R;
+    }else if(pipe.type==='sphere'){
+      const dy=y-pipe.e, dz=z-pipe.z0;
+      f=x*x+dy*dy+dz*dz-pipe.R*pipe.R;
+    }else{
+      if(Math.abs(x)>pipe.L) ok=false;
+      const dy=y-pipe.e, dz=z-pipe.z0;
+      f=dy*dy+dz*dz-pipe.R*pipe.R;
+    }
+    if(!ok){ prev=null; continue; }
+    const sg = f>1e-9 ? 1 : (f<-1e-9 ? -1 : 0);
+    if(prev!==null && sg!==0 && prev!==0 && sg!==prev) return true;
+    prev=sg;
+  }
+  return false;
+}
+
+function drawOrtho(){
+  const el=document.getElementById('ortho');
+  if(!el || state.mode!=='pierce') return;
+  const r=el.getBoundingClientRect();
+  if(r.width<24||r.height<24) return;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=r.width, h=r.height;
+  if(el.width!==Math.round(w*dpr)||el.height!==Math.round(h*dpr)){
+    el.width=Math.round(w*dpr); el.height=Math.round(h*dpr);
+  }
+  const ctx=el.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  const {xr,zr,yr,gap}=orthoBox(), pad=7, labH=13;
+  const tw=2*xr+gap+2*yr, th=2*zr+gap+2*yr;
+  const s=Math.min((w-2*pad)/tw,(h-2*pad-labH)/th);
+  const ox=(w-tw*s)/2;
+  const oy=(h-(th*s+labH))/2+labH;
+  const fcx=ox+xr*s, fcy=oy+zr*s;                                   // 主视
+  const lcx=ox+(2*xr+gap)*s+yr*s, lcy=fcy;                          // 左视
+  const tcx=fcx, tcy=oy+(2*zr+gap)*s+yr*s;                          // 俯视
+
+  const frames=[
+    {key:'front',label:'主视',cx:fcx,cy:fcy,dir:[0,1,0],uv:p=>[p[0],-p[2]],labY:oy-4},
+    {key:'left', label:'左视',cx:lcx,cy:lcy,dir:[1,0,0],uv:p=>[p[1],-p[2]],labY:oy-4},
+    {key:'top',  label:'俯视',cx:tcx,cy:tcy,dir:[0,0,-1],uv:p=>[p[0],-p[1]],labY:tcy-yr*s-4}
+  ];
+
+  for(const fr of frames){
+    const M=(u,v)=>({x:fr.cx+u*s, y:fr.cy+v*s});
+    const {A,B}=orthoShape(fr.key);
+
+    // 两个投影面合成一次填充：分开填会在叠加处留下一条"假轮廓"
+    ctx.beginPath();
+    for(const poly of [A.poly,B.poly]){
+      poly.forEach((p,i)=>{ const q=M(p[0],p[1]); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
+      ctx.closePath();
+    }
+    ctx.fillStyle='rgba(104,140,196,.075)';
+    ctx.fill();
+
+    // 轮廓：被另一个立体表面挡住的段落直接断开——相贯后该处已无棱线，画虚线反而是错的
+    const outline=(poly,other,color)=>{
+      const pts=[];
+      for(let i=0;i<poly.length;i++){
+        const a=poly[i], b=poly[(i+1)%poly.length];
+        const n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*s/3.2));
+        for(let k=0;k<n;k++){
+          const t=k/n, u=a[0]+(b[0]-a[0])*t, v=a[1]+(b[1]-a[1])*t;
+          pts.push({u,v,hid:occludedAt(u,v,fr.key,other)});
+        }
+      }
+      let i=0;
+      while(i<pts.length-1){
+        if(pts[i].hid){ i++; continue; }
+        let j=i;
+        while(j+1<pts.length-1 && !pts[j+1].hid) j++;
+        ctx.beginPath();
+        for(let k=i;k<=j+1;k++){ const q=M(pts[k].u,pts[k].v); k===i?ctx.moveTo(q.x,q.y):ctx.lineTo(q.x,q.y); }
+        ctx.strokeStyle=color; ctx.lineWidth=1.3;
+        ctx.stroke();
+        i=j+1;
+      }
+    };
+    outline(A.poly,'B','rgba(150,184,230,.66)');
+    outline(B.poly,'A','rgba(210,180,126,.58)');
+
+    // 相贯线的投影：先画不可见段（虚线），再画可见段，避免两半重合时被覆盖
+    const segs={vis:[],hid:[]};
+    for(const c of pipeCurves){
+      const P=c.pts.map(p=>{ const [u,v]=fr.uv(p); const q=M(u,v); q.vis=curveVisibleAt(p,fr.dir); return q; });
+      if(P.length<2) continue;
+      let i=0;
+      while(i<P.length-1){
+        const vis=P[i].vis; let j=i;
+        while(j+1<P.length-1 && P[j+1].vis===vis) j++;
+        segs[vis?'vis':'hid'].push(P.slice(i,j+2));
+        i=j+1;
+      }
+    }
+    for(const pass of ['hid','vis']){
+      const vis = pass==='vis';
+      ctx.strokeStyle=vis?'rgba(255,238,196,.96)':'rgba(217,185,120,.34)';
+      ctx.lineWidth=vis?1.6:1;
+      ctx.setLineDash(vis?[]:[3,3]);
+      ctx.shadowBlur=vis?4:0; ctx.shadowColor='rgba(240,205,130,.55)';
+      for(const P of segs[pass]){
+        ctx.beginPath();
+        ctx.moveTo(P[0].x,P[0].y);
+        for(let k=1;k<P.length;k++) ctx.lineTo(P[k].x,P[k].y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.shadowBlur=0;
+    }
+
+    ctx.font='9px ui-monospace,Menlo,monospace';
+    ctx.fillStyle='rgba(122,160,214,.6)';
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    ctx.fillText(fr.label, fr.cx-xr*s, fr.labY);
+  }
 }
 
 /* 相贯线判型 */
@@ -1753,6 +2026,7 @@ function refreshPierce(){
   document.getElementById('shapeMeta').textContent =
     `主体 R₁ ${PIPE_A.R.toFixed(2)} · 从体 R₂ ${pipe.R.toFixed(2)} · z₀ ${pipe.z0.toFixed(2)} · e ${pipe.e.toFixed(2)}`;
 
+  drawOrtho();
   markDirty();
 }
 
@@ -1772,6 +2046,7 @@ function resize(){
   view.height = Math.round(H*DPR);
   vctx.setTransform(DPR,0,0,DPR,0,0);
   measureAxisPad(r);
+  drawOrtho();
   markDirty();
 }
 
@@ -2308,6 +2583,7 @@ view.addEventListener('pointermove',e=>{
   const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
   if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10) tap.moved=true;
   drag={x:e.clientX,y:e.clientY};
+  fastRender = state.mode==='pierce';
   state.yaw += dx*0.42;
   state.pitch = clamp(state.pitch - dy*0.36,-82,82);
   camSegSet('iso');
@@ -2320,6 +2596,7 @@ function endPointer(e){
   else if(pointers.size===0){
     drag=null;
     // 双击 / 双指点按：复位视角（触摸端没有可靠 dblclick）
+    if(fastRender){ fastRender=false; markDirty(); }
     if(tap && !tap.moved && Date.now()-tap.t<300){
       const now=Date.now();
       if(now-lastTap<340) { resetView(); lastTap=0; }
@@ -2732,7 +3009,9 @@ buildPipeUI();
 setSolid('cube', true);
 resize();
 new ResizeObserver(()=>{ resize(); drawThumb(); }).observe(document.getElementById('stage'));
-window.addEventListener('resize',()=>{ resize(); drawThumb(); });
+const rightPanel=document.querySelectorAll('.app > aside.panel')[1];
+if(rightPanel) new ResizeObserver(()=>{ drawOrtho(); }).observe(rightPanel.querySelector('.panel-scroll'));
+window.addEventListener('resize',()=>{ resize(); drawThumb(); drawOrtho(); });
 renderSaved();
 requestAnimationFrame(loop);
 </script>
