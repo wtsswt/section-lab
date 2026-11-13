@@ -1368,7 +1368,6 @@ const state = {
   type:'cube', faces:6, mode:'section',
   tilt:54.7, azim:45, off:0,
   yaw:52, pitch:21, dist:6.4,
-  orthoView:null, orthoZoom:1,
   showEdges:true, showPlane:true,
   auto:false, compare:false
 };
@@ -1405,6 +1404,31 @@ function proj(cam,p){
   const k=cam.focal/Math.max(z,0.05);
   return {x:cam.cx+V.dot(q,cam.r)*k, y:cam.cy-V.dot(q,cam.u)*k, z};
 }
+
+/* 相机飞行：点视角按钮时从当前角度补间到目标角度，而不是瞬移。
+   瞬移最难受的不是"跳"，而是接着拖动时判不清自己是从哪个方向开始的。 */
+let camFly=null;
+const easeOut=t=>1-Math.pow(1-t,3);
+
+function flyTo(preset, ms){
+  const dist = preset.dist!==undefined ? preset.dist : state.dist;
+  const dy=((preset.yaw-state.yaw+540)%360)-180;         // yaw 走最短的一侧
+  camFly={t0:performance.now(), ms:ms||380,
+          y0:state.yaw, p0:state.pitch, d0:state.dist,
+          y1:state.yaw+dy, p1:preset.pitch, d1:dist};
+  fastRender=true;                                       // 补间过程先降网格密度
+  markDirty();
+}
+function stepFly(now){
+  if(!camFly) return false;
+  const k=Math.min(1,(now-camFly.t0)/camFly.ms), e=easeOut(k);
+  state.yaw   = camFly.y0+(camFly.y1-camFly.y0)*e;
+  state.pitch = camFly.p0+(camFly.p1-camFly.p0)*e;
+  state.dist  = camFly.d0+(camFly.d1-camFly.d0)*e;
+  if(k>=1){ camFly=null; fastRender=false; markDirty(); }  // 落地这一帧补满精度
+  return true;
+}
+function stopFly(){ if(camFly){ camFly=null; fastRender=false; } }
 
 /* =========================================================
    5.5 相贯线（两立体表面的交线）
@@ -1514,12 +1538,16 @@ function collectPipeFeatures(){
   }
 }
 
-/* 相贯线上一点是否可见：p 处两块表面都必须朝向相机 */
+/* 相贯线上一点是否可见：p 处两块表面都必须朝向相机。
+   正交投影用视线方向而不是 eye-p——相机在有限远处，用 eye-p 会带进一个
+   与位置有关的偏角，正对轴线看（俯视）时相贯线正好落在主体轮廓上，
+   这点偏角就足以把它判成不可见，整条金色线会缩成两个点。
+   相切情形按可见处理，和右下三视图卡片用同一条判据。 */
 function pipeVisible(p, cam){
-  const v=V.sub(cam.eye,p);
+  const v = cam.ortho ? V.mul(cam.f,-1) : V.sub(cam.eye,p);
   const nA=[p[0],p[1],0];
-  if(V.dot(nA,v)<=0) return false;
-  return V.dot(pipeNormal(p), v)>0;
+  if(V.dot(nA,v) < -1e-6) return false;
+  return V.dot(pipeNormal(p), v) >= -1e-6;
 }
 
 /* ---------- 立体绘制 ---------- */
@@ -1597,6 +1625,31 @@ function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
   }
   const seams=[];
   for(let i=0;i<N;i++) if(face[i]!==face[(i+1)%N]) seams.push(2*Math.PI*(i+1)/N);
+
+  /* 两端封口。侧壁单独存在时，正对轴线看过去整段管子会退化成一条线，
+     里面什么都看不见，像画漏了——补上端面才是一只实心管。 */
+  const nCap=Math.max(2,Math.round(N/24));
+  for(const s of [halfLen,-halfLen]){
+    const sg=s>0?1:-1;
+    const nrm=[a[0]*sg, a[1]*sg, a[2]*sg];
+    for(let i=0;i<N;i++){
+      const t0=2*Math.PI*i/N, t1=2*Math.PI*(i+1)/N;
+      const pt=(r,t)=>[center[0]+r*(Math.cos(t)*e1[0]+Math.sin(t)*e2[0])+a[0]*s,
+                       center[1]+r*(Math.cos(t)*e1[1]+Math.sin(t)*e2[1])+a[1]*s,
+                       center[2]+r*(Math.cos(t)*e1[2]+Math.sin(t)*e2[2])+a[2]*s];
+      for(let k=0;k<nCap;k++){
+        const r0=R*k/nCap, r1=R*(k+1)/nCap;
+        let poly=[pt(r0,t0), pt(r1,t0), pt(r1,t1), pt(r0,t1)];
+        if(holes){
+          poly=clipPolyBy(poly,holes);
+          if(poly.length<3) continue;
+        }
+        const P=poly.map(q=>proj(cam,q));
+        let zs=0; for(const q of P) zs+=q.z;
+        quads.push({pts:P, z:zs/P.length, n:nrm});
+      }
+    }
+  }
   return {quads, seams, ring, tint, holes, halfLen, N};
 }
 
@@ -1718,7 +1771,6 @@ function paintBallLayer(key, center, R, cam){
 }
 
 function renderPierce(ctx){
-  if(state.orthoView){ renderPierceOrtho(ctx,state.orthoView); return; }
   // 相贯用正交投影：透视会给沿轴向伸展的从体带来近大远小，圆柱看着像圆台
   const cam=makeCam(W,H,true);
   // 转动视角时先降网格密度，松手后再补一帧满精度，手机上也跟得上
@@ -1818,37 +1870,29 @@ function surfPoint3(view, which, u, v){
   return [-pipe.L, u, -v];
 }
 
-function occludedAt(u, v, view, other){
-  const p = surfPoint3(view, other==='B'?'A':'B', u, v);   // 被谁挡就取谁的对面那个立体的点
-  const vd = view==='front' ? [0,-1,0] : view==='left' ? [-1,0,0] : [0,0,1];
-  return rayHits(p, vd, other);
+/* p 是否落在立体内部。正交投影下，轮廓上一点被挡住 ⇔ 它落在另一个立体的内部
+   ——落在里面，说明那个立体的表面必然在视线的近侧。 */
+function insideSolid(p, key){
+  if(key==='A'){
+    if(Math.abs(p[2])>=PIPE_A.H) return false;
+    return p[0]*p[0]+p[1]*p[1] < PIPE_A.R*PIPE_A.R;
+  }
+  if(pipe.type==='sphere'){
+    const dx=p[0], dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+    return dx*dx+dy*dy+dz*dz < pipe.R*pipe.R;
+  }
+  if(Math.abs(p[0])>=pipe.L) return false;
+  const dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+  return dy*dy+dz*dz < pipe.R*pipe.R;
 }
 
-/* 从 p 沿 vd 出发，是否与立体 key 的表面相交（含从内部射出）。 */
-function rayHits(p, vd, key){
-  const step=0.04, N=100;
-  let prev=null;
-  for(let i=1;i<=N;i++){
-    const t=i*step;
-    const x=p[0]+vd[0]*t, y=p[1]+vd[1]*t, z=p[2]+vd[2]*t;
-    let f, ok=true;
-    if(key==='A'){
-      if(Math.abs(z)>PIPE_A.H) ok=false;
-      f=x*x+y*y-PIPE_A.R*PIPE_A.R;
-    }else if(pipe.type==='sphere'){
-      const dy=y-pipe.e, dz=z-pipe.z0;
-      f=x*x+dy*dy+dz*dz-pipe.R*pipe.R;
-    }else{
-      if(Math.abs(x)>pipe.L) ok=false;
-      const dy=y-pipe.e, dz=z-pipe.z0;
-      f=dy*dy+dz*dz-pipe.R*pipe.R;
-    }
-    if(!ok){ prev=null; continue; }
-    const sg = f>1e-9 ? 1 : (f<-1e-9 ? -1 : 0);
-    if(prev!==null && sg!==0 && prev!==0 && sg!==prev) return true;
-    prev=sg;
-  }
-  return false;
+/* 轮廓上一点是否被另一立体挡住。
+   以前是沿视线步进采样找符号变化：切入点落在第一步（0.04）之内时会被判成可见，
+   于是轮廓线断开处的端点会随参数在"挡住/没挡住"之间来回跳，主视图上表现为黄线闪烁。
+   这里改成解析判定，结果只由参数连续决定，不会再抖。 */
+function occludedAt(u, v, view, other){
+  const p = surfPoint3(view, other==='B'?'A':'B', u, v);   // 被谁挡就取谁的对面那个立体的点
+  return insideSolid(p, other);
 }
 
 function drawOrtho(){
@@ -1966,31 +2010,6 @@ function paintOrthoView(ctx, key, M, sc){
     }
     ctx.setLineDash([]); ctx.shadowBlur=0;
   }
-}
-
-/* 相贯线模式的主画布：点「主视 / 俯视 / 左视」时直接画正交视图。
-   不再把 3D 相机摆到那个角度——两段管都是开口薄壁，正对轴线看只剩一圈轮廓，
-   视觉上就像没画出来；正交投影的轮廓线和虚线断口也才是教材上的样子。 */
-function renderPierceOrtho(ctx, key){
-  const b=orthoBox();
-  const halfW = key==='left' ? b.yr : b.xr;
-  const halfH = key==='top'  ? b.yr : b.zr;
-  const pad=Math.max(20, Math.min(W,H)*0.10);
-  const sc=Math.min((W-2*pad)/(2*halfW), (H-2*pad)/(2*halfH))*state.orthoZoom;
-  const cx=W/2, cy=H*0.5;
-  const M=(u,v)=>({x:cx+u*sc, y:cy+v*sc});
-
-  paintOrthoView(ctx, key, M, sc);
-
-  const fr=ORTHO_FRAMES[key];
-  ctx.save();
-  ctx.font='10px ui-monospace,Menlo,monospace';
-  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-  ctx.fillStyle='rgba(217,185,120,.66)';
-  ctx.fillText(fr.label, 22, H-22);
-  ctx.fillStyle='rgba(122,160,214,.45)';
-  ctx.fillText(fr.en, 22+ctx.measureText(fr.label).width+9, H-22);
-  ctx.restore();
 }
 
 /* 相贯线判型 */
@@ -2496,7 +2515,6 @@ function setPipeType(t){
 
 function switchMode(m){
   state.mode=m;
-  if(m!=='pierce'){ state.orthoView=null; state.orthoZoom=1; camSegSet('iso'); }
   const sec = (m==='section');
   document.getElementById('modeSeg').querySelectorAll('button').forEach(b=>{
     b.classList.toggle('on', b.dataset.mode===m);
@@ -2607,9 +2625,8 @@ const pointers=new Map();
 let pinch=null, tap=null, lastTap=0;
 
 function resetView(){
-  state.yaw=52; state.pitch=21; state.dist=6.4;
-  state.orthoView=null; state.orthoZoom=1;
-  camSegSet('iso'); markDirty();
+  camSegSet('iso');
+  flyTo(CAM_PRESETS.iso, 320);
 }
 
 view.addEventListener('pointerdown',e=>{
@@ -2630,6 +2647,7 @@ view.addEventListener('pointermove',e=>{
   if(pinch && pointers.size>=2){
     const [a,b]=[...pointers.values()];
     const len=Math.hypot(a.x-b.x,a.y-b.y)||1;
+    stopFly();
     state.dist = clamp(pinch.dist*pinch.len/len, 3.4, 12);
     markDirty();
     return;
@@ -2638,15 +2656,10 @@ view.addEventListener('pointermove',e=>{
   const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
   if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10) tap.moved=true;
   drag={x:e.clientX,y:e.clientY};
+  stopFly();
   fastRender = state.mode==='pierce';
-  // 正交视图里一动就退回 3D，从这个视图的方向接着转
-  if(state.orthoView){
-    const p=ORTHO_TO_3D[state.orthoView]||CAM_PRESETS.iso;
-    state.yaw=p.yaw; state.pitch=p.pitch;
-    state.orthoView=null; state.orthoZoom=1;
-  }
   state.yaw += dx*0.42;
-  state.pitch = clamp(state.pitch - dy*0.36,-82,82);
+  state.pitch = clamp(state.pitch - dy*0.36,-90,90);
   camSegSet(null);            // 手动转过之后就不属于任何预设视角了
   markDirty();
 });
@@ -2671,11 +2684,7 @@ view.addEventListener('pointercancel',endPointer);
 view.addEventListener('dblclick',resetView);
 view.addEventListener('wheel',e=>{
   e.preventDefault();
-  if(state.orthoView){
-    state.orthoZoom=clamp(state.orthoZoom*Math.exp(-Math.sign(e.deltaY)*0.12), 0.6, 3);
-    markDirty();
-    return;
-  }
+  stopFly();
   state.dist = clamp(state.dist + Math.sign(e.deltaY)*0.32, 3.4, 12);
   markDirty();
 },{passive:false});
@@ -2695,20 +2704,14 @@ document.getElementById('btnAuto').onclick=function(){
   if(state.auto) markDirty();
 };
 
-/* 视角：主视 / 俯视 / 左视 / 立体。立体同时是复位（相机角度与缩放一起回默认），
-   所以不再单设「复位视角」按钮。滚轮缩放在正交视图里改的是该视图的比例。 */
+/* 视角：主视 / 俯视 / 左视 / 立体。都是真的把 3D 相机转过去，所以任何时候
+   接着拖都能从当前方向继续转，不会从"平面图"跳回立体。
+   立体同时是复位：角度和缩放一起回默认，因此不再单设「复位视角」按钮。 */
 const CAM_PRESETS={
   front:{yaw:-90, pitch:0},
   top:  {yaw:-90, pitch:90},
   left: {yaw:180, pitch:0},
-  iso:  {yaw:52,  pitch:21}
-};
-/* 从正交视图接着拖拽时，3D 相机从这个角度起步（俯视给 86° 而不是 90°，
-   否则绕 z 轴转 yaw 看不出变化，拖起来像卡住了） */
-const ORTHO_TO_3D={
-  front:{yaw:-90, pitch:0},
-  top:  {yaw:-90, pitch:86},
-  left: {yaw:180, pitch:0}
+  iso:  {yaw:52,  pitch:21, dist:6.4}    // 带 dist 的才算复位，其余只改角度
 };
 
 function camSegSet(mode){
@@ -2716,14 +2719,9 @@ function camSegSet(mode){
 }
 document.querySelectorAll('#viewSeg button').forEach(b=>{
   b.onclick=()=>{
-    const k=b.dataset.cam, p=CAM_PRESETS[k]||CAM_PRESETS.iso;
+    const k=b.dataset.cam;
     camSegSet(k);
-    state.yaw=p.yaw; state.pitch=p.pitch;
-    // 相贯线模式：三个轴向视图走真正的正交投影；截面模式仍交给 3D 相机
-    state.orthoView = (state.mode==='pierce' && k!=='iso') ? k : null;
-    state.orthoZoom = 1;
-    if(k==='iso') state.dist=6.4;
-    markDirty();
+    flyTo(CAM_PRESETS[k]||CAM_PRESETS.iso);
   };
 });
 
@@ -2818,8 +2816,8 @@ document.getElementById('btnPng').onclick=()=>{
 
 document.getElementById('btnResetAll').onclick=()=>{
   state.yaw=52; state.pitch=21; state.dist=6.4;
-  state.orthoView=null; state.orthoZoom=1;
   state.compare=false; state.auto=false;
+  stopFly();
   document.getElementById('btnAuto').classList.remove('on');
   document.getElementById('btnCompare').classList.remove('on');
   compareSec=null; camSegSet('iso');
@@ -3077,6 +3075,7 @@ function loop(t){
     syncSliders();
     refresh();
   }
+  if(stepFly(t)) dirty=true;
   if(dirty){ dirty=false; render(); }
   requestAnimationFrame(loop);
 }
