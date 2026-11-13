@@ -692,12 +692,12 @@
 
       <div class="sec-head" style="margin-top:14px"><h3>视角</h3><span>CAMERA</span></div>
       <div class="seg" id="viewSeg">
+        <button data-cam="front">主视</button>
+        <button data-cam="top">俯视</button>
+        <button data-cam="left">左视</button>
         <button data-cam="iso" class="on">立体</button>
-        <button data-cam="side">水平</button>
-        <button data-cam="top">垂直</button>
       </div>
       <div class="row2">
-        <button id="btnCamReset">复位视角</button>
         <button id="btnCompare">对比截面</button>
       </div>
 
@@ -1368,6 +1368,7 @@ const state = {
   type:'cube', faces:6, mode:'section',
   tilt:54.7, azim:45, off:0,
   yaw:52, pitch:21, dist:6.4,
+  orthoView:null, orthoZoom:1,
   showEdges:true, showPlane:true,
   auto:false, compare:false
 };
@@ -1717,6 +1718,7 @@ function paintBallLayer(key, center, R, cam){
 }
 
 function renderPierce(ctx){
+  if(state.orthoView){ renderPierceOrtho(ctx,state.orthoView); return; }
   // 相贯用正交投影：透视会给沿轴向伸展的从体带来近大远小，圆柱看着像圆台
   const cam=makeCam(W,H,true);
   // 转动视角时先降网格密度，松手后再补一帧满精度，手机上也跟得上
@@ -1873,83 +1875,122 @@ function drawOrtho(){
   const tcx=fcx, tcy=oy+(2*zr+gap)*s+yr*s;                          // 俯视
 
   const frames=[
-    {key:'front',label:'主视',cx:fcx,cy:fcy,dir:[0,1,0],uv:p=>[p[0],-p[2]],labY:oy-4},
-    {key:'left', label:'左视',cx:lcx,cy:lcy,dir:[1,0,0],uv:p=>[p[1],-p[2]],labY:oy-4},
-    {key:'top',  label:'俯视',cx:tcx,cy:tcy,dir:[0,0,-1],uv:p=>[p[0],-p[1]],labY:tcy-yr*s-4}
+    {key:'front',cx:fcx,cy:fcy,labY:oy-4},
+    {key:'left', cx:lcx,cy:lcy,labY:oy-4},
+    {key:'top',  cx:tcx,cy:tcy,labY:tcy-yr*s-4}
   ];
 
   for(const fr of frames){
     const M=(u,v)=>({x:fr.cx+u*s, y:fr.cy+v*s});
-    const {A,B}=orthoShape(fr.key);
-
-    // 两个投影面合成一次填充：分开填会在叠加处留下一条"假轮廓"
-    ctx.beginPath();
-    for(const poly of [A.poly,B.poly]){
-      poly.forEach((p,i)=>{ const q=M(p[0],p[1]); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
-      ctx.closePath();
-    }
-    ctx.fillStyle='rgba(104,140,196,.075)';
-    ctx.fill();
-
-    // 轮廓：被另一个立体表面挡住的段落直接断开——相贯后该处已无棱线，画虚线反而是错的
-    const outline=(poly,other,color)=>{
-      const pts=[];
-      for(let i=0;i<poly.length;i++){
-        const a=poly[i], b=poly[(i+1)%poly.length];
-        const n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*s/3.2));
-        for(let k=0;k<n;k++){
-          const t=k/n, u=a[0]+(b[0]-a[0])*t, v=a[1]+(b[1]-a[1])*t;
-          pts.push({u,v,hid:occludedAt(u,v,fr.key,other)});
-        }
-      }
-      let i=0;
-      while(i<pts.length-1){
-        if(pts[i].hid){ i++; continue; }
-        let j=i;
-        while(j+1<pts.length-1 && !pts[j+1].hid) j++;
-        ctx.beginPath();
-        for(let k=i;k<=j+1;k++){ const q=M(pts[k].u,pts[k].v); k===i?ctx.moveTo(q.x,q.y):ctx.lineTo(q.x,q.y); }
-        ctx.strokeStyle=color; ctx.lineWidth=1.3;
-        ctx.stroke();
-        i=j+1;
-      }
-    };
-    outline(A.poly,'B','rgba(150,184,230,.66)');
-    outline(B.poly,'A','rgba(210,180,126,.58)');
-
-    // 相贯线的投影：先画不可见段（虚线），再画可见段，避免两半重合时被覆盖
-    const segs={vis:[],hid:[]};
-    for(const c of pipeCurves){
-      const P=c.pts.map(p=>{ const [u,v]=fr.uv(p); const q=M(u,v); q.vis=curveVisibleAt(p,fr.dir); return q; });
-      if(P.length<2) continue;
-      let i=0;
-      while(i<P.length-1){
-        const vis=P[i].vis; let j=i;
-        while(j+1<P.length-1 && P[j+1].vis===vis) j++;
-        segs[vis?'vis':'hid'].push(P.slice(i,j+2));
-        i=j+1;
-      }
-    }
-    for(const pass of ['hid','vis']){
-      const vis = pass==='vis';
-      ctx.strokeStyle=vis?'rgba(255,238,196,.96)':'rgba(217,185,120,.34)';
-      ctx.lineWidth=vis?1.6:1;
-      ctx.setLineDash(vis?[]:[3,3]);
-      ctx.shadowBlur=vis?4:0; ctx.shadowColor='rgba(240,205,130,.55)';
-      for(const P of segs[pass]){
-        ctx.beginPath();
-        ctx.moveTo(P[0].x,P[0].y);
-        for(let k=1;k<P.length;k++) ctx.lineTo(P[k].x,P[k].y);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]); ctx.shadowBlur=0;
-    }
+    paintOrthoView(ctx, fr.key, M, s);
 
     ctx.font='9px ui-monospace,Menlo,monospace';
     ctx.fillStyle='rgba(122,160,214,.6)';
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-    ctx.fillText(fr.label, fr.cx-xr*s, fr.labY);
+    ctx.fillText(ORTHO_FRAMES[fr.key].label, fr.cx-xr*s, fr.labY);
   }
+}
+/* 三个视图的视线方向与视图平面坐标：uv 把世界点映到 (u,v)，u 向右、v 向下 */
+const ORTHO_FRAMES={
+  front:{label:'主视', en:'FRONT', dir:[0,1,0],  uv:p=>[p[0],-p[2]]},
+  left: {label:'左视', en:'LEFT',  dir:[1,0,0],  uv:p=>[p[1],-p[2]]},
+  top:  {label:'俯视', en:'TOP',   dir:[0,0,-1], uv:p=>[p[0],-p[1]]}
+};
+
+/* 画一个正交视图：投影面填充 + 轮廓断线 + 相贯线投影。
+   M:(u,v)→像素，sc 为像素/单位（只决定采样密度）。
+   三视图卡片和主画布共用这一段，所以「点俯视」看到的就是卡片里那个俯视。 */
+function paintOrthoView(ctx, key, M, sc){
+  const fr=ORTHO_FRAMES[key];
+  const {A,B}=orthoShape(key);
+
+  // 两个投影面合成一次填充：分开填会在叠加处留下一条"假轮廓"
+  ctx.beginPath();
+  for(const poly of [A.poly,B.poly]){
+    poly.forEach((p,i)=>{ const q=M(p[0],p[1]); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
+    ctx.closePath();
+  }
+  ctx.fillStyle='rgba(104,140,196,.075)';
+  ctx.fill();
+
+  // 轮廓：被另一个立体表面挡住的段落直接断开——相贯后该处已无棱线，画虚线反而是错的
+  const outline=(poly,other,color)=>{
+    const pts=[];
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i], b=poly[(i+1)%poly.length];
+      const n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*sc/3.2));
+      for(let k=0;k<n;k++){
+        const t=k/n, u=a[0]+(b[0]-a[0])*t, v=a[1]+(b[1]-a[1])*t;
+        pts.push({u,v,hid:occludedAt(u,v,key,other)});
+      }
+    }
+    let i=0;
+    while(i<pts.length-1){
+      if(pts[i].hid){ i++; continue; }
+      let j=i;
+      while(j+1<pts.length-1 && !pts[j+1].hid) j++;
+      ctx.beginPath();
+      for(let k=i;k<=j+1;k++){ const q=M(pts[k].u,pts[k].v); k===i?ctx.moveTo(q.x,q.y):ctx.lineTo(q.x,q.y); }
+      ctx.strokeStyle=color; ctx.lineWidth=1.3;
+      ctx.stroke();
+      i=j+1;
+    }
+  };
+  outline(A.poly,'B','rgba(150,184,230,.66)');
+  outline(B.poly,'A','rgba(210,180,126,.58)');
+
+  // 相贯线的投影：先画不可见段（虚线），再画可见段，避免两半重合时被覆盖
+  const segs={vis:[],hid:[]};
+  for(const c of pipeCurves){
+    const P=c.pts.map(p=>{ const [u,v]=fr.uv(p); const q=M(u,v); q.vis=curveVisibleAt(p,fr.dir); return q; });
+    if(P.length<2) continue;
+    let i=0;
+    while(i<P.length-1){
+      const vis=P[i].vis; let j=i;
+      while(j+1<P.length-1 && P[j+1].vis===vis) j++;
+      segs[vis?'vis':'hid'].push(P.slice(i,j+2));
+      i=j+1;
+    }
+  }
+  for(const pass of ['hid','vis']){
+    const vis = pass==='vis';
+    ctx.strokeStyle=vis?'rgba(255,238,196,.96)':'rgba(217,185,120,.34)';
+    ctx.lineWidth=vis?1.6:1;
+    ctx.setLineDash(vis?[]:[3,3]);
+    ctx.shadowBlur=vis?4:0; ctx.shadowColor='rgba(240,205,130,.55)';
+    for(const P of segs[pass]){
+      ctx.beginPath();
+      ctx.moveTo(P[0].x,P[0].y);
+      for(let k=1;k<P.length;k++) ctx.lineTo(P[k].x,P[k].y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.shadowBlur=0;
+  }
+}
+
+/* 相贯线模式的主画布：点「主视 / 俯视 / 左视」时直接画正交视图。
+   不再把 3D 相机摆到那个角度——两段管都是开口薄壁，正对轴线看只剩一圈轮廓，
+   视觉上就像没画出来；正交投影的轮廓线和虚线断口也才是教材上的样子。 */
+function renderPierceOrtho(ctx, key){
+  const b=orthoBox();
+  const halfW = key==='left' ? b.yr : b.xr;
+  const halfH = key==='top'  ? b.yr : b.zr;
+  const pad=Math.max(20, Math.min(W,H)*0.10);
+  const sc=Math.min((W-2*pad)/(2*halfW), (H-2*pad)/(2*halfH))*state.orthoZoom;
+  const cx=W/2, cy=H*0.5;
+  const M=(u,v)=>({x:cx+u*sc, y:cy+v*sc});
+
+  paintOrthoView(ctx, key, M, sc);
+
+  const fr=ORTHO_FRAMES[key];
+  ctx.save();
+  ctx.font='10px ui-monospace,Menlo,monospace';
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillStyle='rgba(217,185,120,.66)';
+  ctx.fillText(fr.label, 22, H-22);
+  ctx.fillStyle='rgba(122,160,214,.45)';
+  ctx.fillText(fr.en, 22+ctx.measureText(fr.label).width+9, H-22);
+  ctx.restore();
 }
 
 /* 相贯线判型 */
@@ -2455,6 +2496,7 @@ function setPipeType(t){
 
 function switchMode(m){
   state.mode=m;
+  if(m!=='pierce'){ state.orthoView=null; state.orthoZoom=1; camSegSet('iso'); }
   const sec = (m==='section');
   document.getElementById('modeSeg').querySelectorAll('button').forEach(b=>{
     b.classList.toggle('on', b.dataset.mode===m);
@@ -2566,6 +2608,7 @@ let pinch=null, tap=null, lastTap=0;
 
 function resetView(){
   state.yaw=52; state.pitch=21; state.dist=6.4;
+  state.orthoView=null; state.orthoZoom=1;
   camSegSet('iso'); markDirty();
 }
 
@@ -2596,9 +2639,15 @@ view.addEventListener('pointermove',e=>{
   if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10) tap.moved=true;
   drag={x:e.clientX,y:e.clientY};
   fastRender = state.mode==='pierce';
+  // 正交视图里一动就退回 3D，从这个视图的方向接着转
+  if(state.orthoView){
+    const p=ORTHO_TO_3D[state.orthoView]||CAM_PRESETS.iso;
+    state.yaw=p.yaw; state.pitch=p.pitch;
+    state.orthoView=null; state.orthoZoom=1;
+  }
   state.yaw += dx*0.42;
   state.pitch = clamp(state.pitch - dy*0.36,-82,82);
-  camSegSet('iso');
+  camSegSet(null);            // 手动转过之后就不属于任何预设视角了
   markDirty();
 });
 function endPointer(e){
@@ -2622,6 +2671,11 @@ view.addEventListener('pointercancel',endPointer);
 view.addEventListener('dblclick',resetView);
 view.addEventListener('wheel',e=>{
   e.preventDefault();
+  if(state.orthoView){
+    state.orthoZoom=clamp(state.orthoZoom*Math.exp(-Math.sign(e.deltaY)*0.12), 0.6, 3);
+    markDirty();
+    return;
+  }
   state.dist = clamp(state.dist + Math.sign(e.deltaY)*0.32, 3.4, 12);
   markDirty();
 },{passive:false});
@@ -2641,24 +2695,37 @@ document.getElementById('btnAuto').onclick=function(){
   if(state.auto) markDirty();
 };
 
+/* 视角：主视 / 俯视 / 左视 / 立体。立体同时是复位（相机角度与缩放一起回默认），
+   所以不再单设「复位视角」按钮。滚轮缩放在正交视图里改的是该视图的比例。 */
+const CAM_PRESETS={
+  front:{yaw:-90, pitch:0},
+  top:  {yaw:-90, pitch:90},
+  left: {yaw:180, pitch:0},
+  iso:  {yaw:52,  pitch:21}
+};
+/* 从正交视图接着拖拽时，3D 相机从这个角度起步（俯视给 86° 而不是 90°，
+   否则绕 z 轴转 yaw 看不出变化，拖起来像卡住了） */
+const ORTHO_TO_3D={
+  front:{yaw:-90, pitch:0},
+  top:  {yaw:-90, pitch:86},
+  left: {yaw:180, pitch:0}
+};
+
 function camSegSet(mode){
   document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cam===mode));
 }
 document.querySelectorAll('#viewSeg button').forEach(b=>{
   b.onclick=()=>{
-    camSegSet(b.dataset.cam);
-    if(b.dataset.cam==='iso'){ state.yaw=52; state.pitch=21; }
-    if(b.dataset.cam==='side'){ state.yaw=-90; state.pitch=0; }
-    if(b.dataset.cam==='top'){ state.yaw=-90; state.pitch=80; }
+    const k=b.dataset.cam, p=CAM_PRESETS[k]||CAM_PRESETS.iso;
+    camSegSet(k);
+    state.yaw=p.yaw; state.pitch=p.pitch;
+    // 相贯线模式：三个轴向视图走真正的正交投影；截面模式仍交给 3D 相机
+    state.orthoView = (state.mode==='pierce' && k!=='iso') ? k : null;
+    state.orthoZoom = 1;
+    if(k==='iso') state.dist=6.4;
     markDirty();
   };
 });
-
-document.getElementById('btnCamReset').onclick=()=>{
-  state.yaw=52; state.pitch=21; state.dist=6.4;
-  camSegSet('iso');
-  markDirty();
-};
 
 ['tilt','azim','off'].forEach(id=>{
   const el=document.getElementById(id);
@@ -2751,6 +2818,7 @@ document.getElementById('btnPng').onclick=()=>{
 
 document.getElementById('btnResetAll').onclick=()=>{
   state.yaw=52; state.pitch=21; state.dist=6.4;
+  state.orthoView=null; state.orthoZoom=1;
   state.compare=false; state.auto=false;
   document.getElementById('btnAuto').classList.remove('on');
   document.getElementById('btnCompare').classList.remove('on');
