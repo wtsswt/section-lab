@@ -173,18 +173,6 @@
   }
   .eq-box p{font-size:9.5px;line-height:1.6;color:var(--faint);margin-top:5px;}
 
-  .panel-foot{
-    flex:0 0 auto;display:flex;gap:2px;padding:8px 10px;border-top:1px solid var(--line-soft);
-  }
-  .tab-btn{
-    flex:1;height:24px;border:1px solid transparent;border-radius:5px;background:transparent;
-    color:var(--faint);font-size:10px;letter-spacing:.08em;cursor:pointer;font-family:var(--sans);
-  }
-  .tab-btn.on{color:var(--gold);border-color:rgba(217,185,120,.28);background:rgba(217,185,120,.06);}
-  .panel-note{
-    padding:0 12px 10px;font-size:9.5px;line-height:1.6;color:var(--faint);min-height:46px;
-  }
-
   /* ---------- stage ---------- */
   .stage-col{
     position:relative; display:flex; min-width:0; min-height:0;
@@ -404,7 +392,7 @@
     .sec-head em,.sec-head span{font-size:9px;}
     .solid-btn i{font-size:10px;}
     .eq-box code{font-size:11.5px;}
-    .eq-box p,.hint,.panel-note,.foot-note,.empty-note{font-size:10.5px;}
+    .eq-box p,.hint,.foot-note,.empty-note{font-size:10.5px;}
     .saved-item .nm{font-size:11.5px;}
     .saved-item .idx,.saved-item .mt{font-size:9px;}
     .sc-head h4{font-size:14px;}
@@ -427,13 +415,11 @@
 
   /* ================= 触摸设备：放大可点区域 ================= */
   @media (hover:none),(pointer:coarse){
-    .chip,.seg button,.row2 button,.tab-btn,.gold-btn,.auto-btn,
+    .chip,.seg button,.row2 button,.gold-btn,.auto-btn,
     .saved-item,.solid-btn,.ghost-btn{touch-action:manipulation;}
     .chip{height:34px;padding:0 12px;font-size:11.5px;}
     .seg button{height:40px;font-size:12px;}
     .row2 button{height:40px;font-size:12px;}
-    .tab-btn{height:34px;font-size:11.5px;}
-    .panel-foot{padding:8px;}
     .gold-btn{height:44px;font-size:12.5px;}
     .saved-item{padding:10px 8px;}
     .saved-item .del{opacity:.75;font-size:15px;padding:0 4px;}
@@ -589,13 +575,6 @@
         </div>
         <p class="hint" id="pipeHint">从体轴线沿 x 方向，与主体轴线在 z₀ 高度相交。</p>
       </div>
-    </div>
-
-    <div class="panel-note" id="panelNote">拖动滑杆移动切割平面；在视图中拖拽可旋转立体。</div>
-    <div class="panel-foot">
-      <button class="tab-btn on" data-tab="0">立体</button>
-      <button class="tab-btn" data-tab="1">截面</button>
-      <button class="tab-btn" data-tab="2">关于</button>
     </div>
   </aside>
 
@@ -1608,7 +1587,8 @@ function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
                Math.cos(tm)*e1[1]+Math.sin(tm)*e2[1],
                Math.cos(tm)*e1[2]+Math.sin(tm)*e2[2]];
     const probe=ring(tm,0);
-    const f=V.dot(nrm, V.sub(cam.eye,probe))>0;
+    // 平行投影下"视点"在无穷远，朝向要用视线方向判，否则轮廓缝会偏十几度
+    const f=V.dot(nrm, cam.ortho ? V.mul(cam.f,-1) : V.sub(cam.eye,probe))>0;
     face.push(f);
     // 轴向再分段：否则一个面片是整条母线长的长条，挖孔会挖掉整条竖带
     for(let k=0;k<nSeg;k++){
@@ -2182,15 +2162,18 @@ function render(){
   if(state.mode==='pierce'){ renderPierce(ctx); return; }
   if(!solid) return;
 
-  const cam = makeCam(W,H);
+  /* 与相贯模式一致，截面也用平行投影。透视会让近侧棱比远侧棱长，
+     主视图里正方体成了前大后小的梯形——而工程三视图要的是前后棱重影。
+     平行投影下 6 条棱只剩 3 组可见线，长对正/高平齐才对得上右侧三视图。 */
+  const cam = makeCam(W,H,true);
+  const vd  = V.mul(cam.f,-1);                            // 指向观察者的视线方向
   const P = solid.verts.map(p=>proj(cam,p));
   const faceDepth = solid.centers.map((c,i)=>proj(cam,c).z);
   const order = solid.faces.map((f,i)=>i).sort((a,b)=>faceDepth[b]-faceDepth[a]);
 
-  const facing = solid.centers.map((c,i)=>{
-    const toEye = V.sub(cam.eye,c);
-    return V.dot(solid.normals[i],toEye) > 0;
-  });
+  /* 朝向判定用视线方向而不是 eye-面心：平行投影下没有"视点"，
+     用有限远的 eye 会让接近侧影的面时正时反，轮廓边跟着闪。 */
+  const facing = solid.centers.map((c,i)=>V.dot(solid.normals[i],vd) > 0);
 
   // —— 背面填充
   ctx.save();
@@ -2239,8 +2222,7 @@ function render(){
   if(state.showEdges){
     for(const e of solid.edges){
       const A=solid.verts[e.a], B=solid.verts[e.b];
-      const mid=V.mul(V.add(A,B),0.5);
-      const toEye=V.sub(cam.eye,mid);
+      const toEye=vd;
       let vis=false;
       if(e.f.length){
         vis = e.f.some(fi=>V.dot(solid.normals[fi],toEye)>0);
@@ -2531,10 +2513,6 @@ function switchMode(m){
   const chipPlane=document.querySelector('[data-toggle="plane"]');
   if(chipPlane) chipPlane.classList.toggle('hidden-block', !sec);
 
-  document.getElementById('panelNote').textContent = sec
-    ? '拖动滑杆移动切割平面；在视图中拖拽可旋转立体。'
-    : '拖拽旋转、捏合缩放；相贯线实线为可见段，虚线为被遮挡段。';
-
   if(sec){ syncSliders(); refresh(); }
   else refreshPierce();
   resize();
@@ -2792,19 +2770,6 @@ function renderSaved(){
     };
   });
 }
-
-document.querySelectorAll('.tab-btn').forEach(t=>{
-  t.onclick=()=>{
-    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('on'));
-    t.classList.add('on');
-    const notes=[
-      '拖动滑杆移动切割平面；在视图中拖拽可旋转立体，滚轮缩放。',
-      '截面由平面与棱的交点求凸包得到，周长与面积按真实三维尺度计算。',
-      '纯前端单文件实现，无外部依赖；三视图按第一角投影绘制。'
-    ];
-    document.getElementById('panelNote').textContent=notes[+t.dataset.tab];
-  };
-});
 
 /* PNG 导出 */
 document.getElementById('btnPng').onclick=()=>{
