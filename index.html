@@ -1362,14 +1362,17 @@ const markDirty = ()=>{ dirty = true; };
    ========================================================= */
 function makeCam(w,h,ortho){
   const yaw=state.yaw*DEG, pitch=state.pitch*DEG;
-  const eye=[state.dist*Math.cos(pitch)*Math.cos(yaw),
-             state.dist*Math.cos(pitch)*Math.sin(yaw),
-             state.dist*Math.sin(pitch)];
-  const f=V.norm(V.mul(eye,-1));
-  let up=[0,0,1];
-  if(Math.abs(V.dot(f,up))>0.995) up=[0,1,0];
-  const r=V.norm(V.cross(f,up));
-  const u=V.cross(r,f);
+  const cy=Math.cos(yaw),  sy=Math.sin(yaw);
+  const cp=Math.cos(pitch), sp=Math.sin(pitch);
+  const eye=[state.dist*cp*cy, state.dist*cp*sy, state.dist*sp];
+  /* 基向量直接按 yaw / pitch 解析写出，不再 cross(f,up) 再归一化。
+     原来靠「|f·z| 超过 0.995 就把 up 换成 y 轴」躲奇异点，代价是越过
+     84.3° 那一瞬整个画面滚 90°——从侧面斜着往俯视拖，会突然"啪"地吸过去。
+     解析式在 pitch = ±90 处依然连续，俯视时 yaw 只剩面内旋转这一个自由度，
+     本来就该这样转。 */
+  const f=[-cp*cy, -cp*sy, -sp];
+  const r=[-sy, cy, 0];
+  const u=[-sp*cy, -sp*sy, cp];
   // 正交模式：投影像素比例 = 透视在视点处的比例，尺寸一致但去除近大远小
   const base=Math.min(w,h)*1.34;
   return {eye,f,r,u,focal: ortho? base/Math.max(state.dist,.1) : base, ortho:!!ortho, cx:w/2, cy:h*0.5};
