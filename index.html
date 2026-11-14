@@ -1666,42 +1666,59 @@ function strokeBundle(cam, ctx, bd){
   }
 }
 
-/* 相贯线：逐段判可见性，可见实线、不可见虚线 */
-function drawPierceCurves(cam, ctx){
+/* 相贯线：逐段判可见性，可见实线、不可见虚线。
+   pass='hid' 只画被遮挡段，'vis' 只画可见段。
+   两遍必须分开画、且有先后：遮挡段的虚线要落在半透明壁的**下面**。
+   以前所有段都画在最上层，被遮的那半截虚线压在半透明壁的正面，看着就是
+   "近虚远实"——虚实判得没错，但画出来是反的。 */
+function drawPierceCurves(cam, ctx, pass){
+  const wantVis = pass!=='hid';
   ctx.lineCap='round';
   ctx.lineJoin='round';
+  const setStyle = vis => {
+    if(vis){
+      ctx.setLineDash([]);
+      ctx.strokeStyle='rgba(255,238,196,.98)';
+      ctx.lineWidth=2.3;
+      ctx.shadowBlur=7; ctx.shadowColor='rgba(240,205,130,.75)';
+    }else{
+      ctx.setLineDash([4,4.5]);
+      ctx.strokeStyle='rgba(217,185,120,.62)';   // 垫在壁下会被压暗，透明度给足
+      ctx.lineWidth=1.25;
+      ctx.shadowBlur=0;
+    }
+  };
   for(const c of pipeCurves){
     const pts=c.pts;
-    let mode=null, started=false;
+    let run=null;
+    const flush=()=>{
+      if(run && run.P.length>1 && run.vis===wantVis){
+        setStyle(run.vis);
+        ctx.beginPath();
+        run.P.forEach((q,k)=>k?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+        ctx.stroke();
+      }
+      run=null;
+    };
     for(let k=0;k<pts.length-1;k++){
       const a=pts[k], b=pts[k+1];
       const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
       const vis=pipeVisible(mid,cam);
-      const pa=proj(cam,a), pb=proj(cam,b);
-      if(vis!==mode){
-        if(started) ctx.stroke();
-        ctx.beginPath();
-        ctx.setLineDash(vis?[]:[4,4.5]);
-        ctx.strokeStyle = vis ? 'rgba(255,238,196,.98)' : 'rgba(217,185,120,.50)';
-        ctx.lineWidth = vis ? 2.3 : 1.25;
-        ctx.shadowBlur = vis ? 7 : 0;
-        ctx.shadowColor = 'rgba(240,205,130,.75)';
-        ctx.moveTo(pa.x,pa.y);
-        mode=vis; started=true;
-      }
-      ctx.lineTo(pb.x,pb.y);
+      if(!run || run.vis!==vis){ flush(); run={vis, P:[proj(cam,a)]}; }
+      run.P.push(proj(cam,b));
     }
-    if(started) ctx.stroke();
+    flush();
     ctx.setLineDash([]);
     ctx.shadowBlur=0;
   }
+  // 特征点跟随所在段一起分层：可见的在上层，被挡的跟着沉到壁下
   for(const f of pipeFeat){
+    if(pipeVisible(f.p,cam)!==wantVis) continue;
     const q=proj(cam,f.p);
-    const vis=pipeVisible(f.p,cam);
     ctx.beginPath();
     ctx.arc(q.x,q.y,3.1,0,Math.PI*2);
     ctx.fillStyle='rgba(9,16,28,.75)'; ctx.fill();
-    ctx.strokeStyle=vis?'rgba(248,235,205,.95)':'rgba(217,185,120,.45)';
+    ctx.strokeStyle=wantVis?'rgba(248,235,205,.95)':'rgba(217,185,120,.45)';
     ctx.lineWidth=1.4; ctx.stroke();
   }
 }
@@ -1768,6 +1785,10 @@ function renderPierce(ctx){
   if(isBall) paintBallLayer('B',[0,pipe.e,pipe.z0],pipe.R,cam);
   else paintTubeLayer('B',B.quads,cam);
 
+  // 被遮挡段先画，让它落在半透明壁的下面：这样看过去虚线在"里面"，
+  // 而不是浮在近侧壁的正面冒充近处
+  drawPierceCurves(cam, ctx, 'hid');
+
   // 球比主体大时会成片压住主体的壁，所以球画在壁的下面（透过壁看球）；
   // 从体是细圆柱时反过来，管子的近侧表面本来就在壁的前面
   ctx.save();
@@ -1782,7 +1803,7 @@ function renderPierce(ctx){
 
   strokeBundle(cam,ctx,A);
   if(B) strokeBundle(cam,ctx,B);
-  drawPierceCurves(cam,ctx);
+  drawPierceCurves(cam,ctx,'vis');
   drawAxis(ctx,cam);
 }
 
