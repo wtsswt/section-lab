@@ -2174,13 +2174,14 @@ function drawAmbient(ctx,w,h){
 }
 
 /* 坐标轴图例
-   旧写法用「投影原点 − 投影单位点」求方向再归一化。轴与视线接近平行时差分长度趋近 0，
-   归一化出来只剩浮点噪声：俯视时 Z 整条消失，Z 标签正好压在原点与 X/Y 的交点上。
-   改为直接用相机基向量 r/u 做点积，投影长度与朝向都是解析的：
-     · 长度随视角收缩（正对镜头最短），不再三根等长棍子，转动时有纵深感
-     · 指向观察者的轴后画、压在上面；背向的轴先画、压暗，前后关系读得出来
-     · 与视线夹角小于约 9° 的轴按制图惯例画成空心圆（表示垂直纸面）
-   X 蓝 / Y 青 / Z 金，与画面主色一致；字母带描边光晕，压在网格上也读得清。 */
+   图例必须是立体图里那个坐标系的正投影，不能"为了好看"改长度，否则和画面就对不上：
+     · 屏幕方向 = (v·r, −v·u)，投影长度 ∝ |(v·r, v·u)| = sin(v 与视线夹角)
+     · 三根轴两两正交，mag² 之和恒为 2，最长者恒 ≥ 0.816；
+       以最长轴为基准归一，图例外框不随转动呼吸，但三根轴之间的长短比是真实的
+     · 明暗随 depth 用 tanh 连续过渡（指向观察者亮、背向暗），不设 depth=0 的硬阈值，
+       否则拖过正侧方向时整根轴会"啪"地跳一下
+     · 与视线夹角很小时按制图惯例变成空心圆，箭头与圆之间用 smoothstep 交叉淡入淡出，
+       中间没有突变点；轴序仍按 depth 排，指向观察者的压在最上面 */
 const AXIS_DEFS=[
   {v:[1,0,0], hex:'#7aa0d6', label:'X'},
   {v:[0,1,0], hex:'#6fd3a0', label:'Y'},
@@ -2190,10 +2191,11 @@ function hexA(hex,a){
   const n=parseInt(hex.slice(1),16);
   return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';
 }
+const sstep=(e0,e1,x)=>{ const t=clamp((x-e0)/(e1-e0),0,1); return t*t*(3-2*t); };
 
 function drawAxis(ctx,cam){
   const L  = clamp(Math.min(W,H)*0.072, 18, 30);
-  const ringR = Math.max(L*1.50, L+14);      // 环要包住最远的字母，否则会从字中间穿过去
+  const ringR = Math.max(L*1.52, L+15);      // 环要包住最远的字母，否则会从字中间穿过去
   const R  = ringR*1.06;
   const ox = Math.max(W<520?44:56, R+10);    // 窄画布上也要给圆环留出边距
   // 万一避让值大过画布高（控制条几乎盖满画布），宁可让图例压一点控制条，也不能被顶到画布外
@@ -2222,55 +2224,62 @@ function drawAxis(ctx,cam){
     ctx.fillText(txt,x,y);
   };
 
-  const axes=AXIS_DEFS.map(a=>{
+  const items=AXIS_DEFS.map(a=>{
     const sx= V.dot(a.v,cam.r), sy=-V.dot(a.v,cam.u);
     const mag=Math.hypot(sx,sy);                  // 0 = 与视线平行
     return {hex:a.hex,label:a.label,mag,
-            ux: mag>1e-6? sx/mag:0, uy: mag>1e-6? sy/mag:1,
+            ux: mag>1e-6? sx/mag:0, uy: mag>1e-6? sy/mag:-1,
             depth: -V.dot(a.v,cam.f)};            // >0 指向观察者
   }).sort((p,q)=>p.depth-q.depth);
 
+  const maxMag = Math.max(items[0].mag, items[1].mag, items[2].mag) || 1;
+  const k = L/maxMag;                             // 最长的那根轴恰好 L，其余按真实比例缩短
+
   const labels=[];
-  for(const a of axes){
-    const near = a.depth>=0;
-    const fade = near?1:.52;
+  for(const a of items){
+    // 明暗连续：depth 0 处约 0.78，正对观察者 1.0，背向 0.57，没有跳变
+    const fade = 0.57 + 0.43*(0.5+0.5*Math.tanh(a.depth*2.3));
+    const len  = a.mag*k;
+    const ha   = sstep(0.055,0.20,a.mag);         // 箭头 / 轴线权重
+    const ca   = 1-ha;                            // 空心圆权重
+    const cr   = clamp(L*0.17,4.6,5.3)*(0.88+0.12*fade);
 
-    const al=clamp(L*0.26,5.6,7.8), aw=al*0.42;   // 箭头随轴长缩放，小画布上不至于显得笨重
-
-    if(a.mag<0.15){                              // 垂直纸面：空心圆
-      const r=clamp(L*0.19,4.8,6)*(near?1:.86);
-      ctx.beginPath(); ctx.arc(ox,oy,r,0,Math.PI*2);
-      ctx.fillStyle=hexA(a.hex,.09*fade+.01); ctx.fill();
-      ctx.strokeStyle=hexA(a.hex,.72*fade); ctx.lineWidth=1.2; ctx.stroke();
-      labels.push({t:a.label,x:ox+r+3.4,y:oy-r-1.4,hex:a.hex,fade});
-      continue;
+    if(ca>0.01){                                  // 垂直纸面：空心圆
+      ctx.beginPath(); ctx.arc(ox,oy,cr,0,Math.PI*2);
+      ctx.fillStyle=hexA(a.hex,(.09*fade+.01)*ca); ctx.fill();
+      if(ca>0.02){
+        ctx.strokeStyle=hexA(a.hex,.72*fade*ca); ctx.lineWidth=1.2; ctx.stroke();
+      }
     }
+    if(ha>0.01){
+      const al=clamp(L*0.26,5.6,7.8)*clamp(a.mag/0.45,0.30,1), aw=al*0.42;   // 短轴上别让小箭头比轴还显眼
+      const tx=ox+a.ux*len, ty=oy+a.uy*len;
+      const px=-a.uy, py=a.ux;                    // 轴的法向，用来摆箭头两翼
 
-    const len=L*(0.46+0.54*a.mag);
-    const tx=ox+a.ux*len, ty=oy+a.uy*len;
-    const px=-a.uy, py=a.ux;                      // 轴的法向，用来摆箭头两翼
+      const g=ctx.createLinearGradient(ox,oy,tx,ty);
+      g.addColorStop(0,hexA(a.hex,.14*ha*fade));
+      g.addColorStop(1,hexA(a.hex,.94*ha*fade));
+      ctx.strokeStyle=g; ctx.lineWidth=1.6; ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(ox,oy);
+      ctx.lineTo(tx-a.ux*al*0.62, ty-a.uy*al*0.62); // 收在箭头根部，避免线头戳出箭尖
+      ctx.stroke();
 
-    const g=ctx.createLinearGradient(ox,oy,tx,ty);
-    g.addColorStop(0,hexA(a.hex,.08*fade));
-    g.addColorStop(1,hexA(a.hex,.92*fade));
-    ctx.strokeStyle=g; ctx.lineWidth=1.6; ctx.lineCap='round';
-    ctx.beginPath();
-    ctx.moveTo(ox,oy);
-    ctx.lineTo(tx-a.ux*al*0.62, ty-a.uy*al*0.62);  // 收在箭头根部，避免线头戳出箭尖
-    ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(tx,ty);
+      ctx.lineTo(tx-a.ux*al+px*aw, ty-a.uy*al+py*aw);
+      ctx.lineTo(tx-a.ux*al-px*aw, ty-a.uy*al-py*aw);
+      ctx.closePath();
+      ctx.fillStyle=hexA(a.hex,.94*ha*fade);
+      ctx.fill();
 
-    ctx.beginPath();
-    ctx.moveTo(tx,ty);
-    ctx.lineTo(tx-a.ux*al+px*aw, ty-a.uy*al+py*aw);
-    ctx.lineTo(tx-a.ux*al-px*aw, ty-a.uy*al-py*aw);
-    ctx.closePath();
-    ctx.fillStyle=hexA(a.hex,.92*fade);
-    ctx.fill();
-
-    labels.push({t:a.label,x:tx+a.ux*(al+2.6),y:ty+a.uy*(al+2.6),hex:a.hex,fade});
+      labels.push({t:a.label,x:tx+a.ux*(al+2.8),y:ty+a.uy*(al+2.8),hex:a.hex,fade});
+    }else{
+      labels.push({t:a.label,x:ox+cr*.72+5,y:oy-cr*.72-5,hex:a.hex,fade});
+    }
   }
 
-  /* 字母避让：视线贴近某根轴时，两根轴在屏幕上的方向会很接近，字母挤到一处。
+  /* 字母避让：三根轴长短不一时，短轴的字母可能贴到长轴字母上。
      锚点近于 MIN 就沿连线各退一半，迭代三次足够收敛——只挪字，不改轴向。 */
   const MIN=Math.max(12,L*0.48);
   for(let it=0;it<3;it++){
@@ -2280,8 +2289,8 @@ function drawAxis(ctx,cam){
         let dx=q.x-p.x, dy=q.y-p.y, d=Math.hypot(dx,dy);
         if(d>=MIN) continue;
         if(d<0.01){ dx=1; dy=0; d=1; }
-        const k=(MIN-d)/2/d;
-        p.x-=dx*k; p.y-=dy*k; q.x+=dx*k; q.y+=dy*k;
+        const kk=(MIN-d)/2/d;
+        p.x-=dx*kk; p.y-=dy*kk; q.x+=dx*kk; q.y+=dy*kk;
       }
     }
   }
