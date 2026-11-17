@@ -2137,14 +2137,17 @@ function resize(){
 }
 
 /* 坐标轴避让：控制条浮在画布上时，把它让开；手机上控制条在画布外则用固定边距 */
-let AXIS_PAD = 108;
+let AXIS_PAD = 58;
 function measureAxisPad(vr){
-  AXIS_PAD = 108;
+  AXIS_PAD = 58;                                  // 控制条不在画布上时，贴着左下角放
   const bar = document.querySelector('.plane-bar');
-  if(!bar) return;
+  /* 相贯模式下整条控制条是 display:none，getBoundingClientRect 全是 0，
+     旧版直接拿它算避让，于是 AXIS_PAD 变成整个画布高，图例被顶到画布外面去。 */
+  if(!bar || !bar.offsetParent) return;
   const br = bar.getBoundingClientRect();
+  if(br.height < 8) return;
   const overlap = vr.bottom - br.top;
-  if(overlap > 16) AXIS_PAD = overlap + 44;
+  if(overlap > 16) AXIS_PAD = overlap + 50;
 }
 
 function drawAmbient(ctx,w,h){
@@ -2167,25 +2170,125 @@ function drawAmbient(ctx,w,h){
   ctx.restore();
 }
 
+/* 坐标轴图例
+   旧写法用「投影原点 − 投影单位点」求方向再归一化。轴与视线接近平行时差分长度趋近 0，
+   归一化出来只剩浮点噪声：俯视时 Z 整条消失，Z 标签正好压在原点与 X/Y 的交点上。
+   改为直接用相机基向量 r/u 做点积，投影长度与朝向都是解析的：
+     · 长度随视角收缩（正对镜头最短），不再三根等长棍子，转动时有纵深感
+     · 指向观察者的轴后画、压在上面；背向的轴先画、压暗，前后关系读得出来
+     · 与视线夹角小于约 9° 的轴按制图惯例画成空心圆（表示垂直纸面）
+   X 蓝 / Y 青 / Z 金，与画面主色一致；字母带描边光晕，压在网格上也读得清。 */
+const AXIS_DEFS=[
+  {v:[1,0,0], hex:'#7aa0d6', label:'X'},
+  {v:[0,1,0], hex:'#6fd3a0', label:'Y'},
+  {v:[0,0,1], hex:'#d9b978', label:'Z'}
+];
+function hexA(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';
+}
+
 function drawAxis(ctx,cam){
-  const ox = W<520?42:52, oy=H-AXIS_PAD, L = W<420?16:20;
-  const dirs=[[1,0,0,'X'],[0,1,0,'Y'],[0,0,1,'Z']];
+  const L  = clamp(Math.min(W,H)*0.072, 18, 30);
+  const ringR = Math.max(L*1.50, L+14);      // 环要包住最远的字母，否则会从字中间穿过去
+  const R  = ringR*1.06;
+  const ox = Math.max(W<520?44:56, R+10);    // 窄画布上也要给圆环留出边距
+  // 万一避让值大过画布高（控制条几乎盖满画布），宁可让图例压一点控制条，也不能被顶到画布外
+  const oy = Math.max(R+10, Math.min(H-AXIS_PAD, H-R-8));
+
   ctx.save();
-  ctx.font='9px ui-monospace,Menlo,monospace';
-  for(const [x,y,z,label] of dirs){
-    const p=proj(cam,V.add(cam.eye, V.mul(cam.f,state.dist)));
-    // 用相对方向投影：取原点与单位向量
-    const o=proj(cam,[0,0,0]);
-    const q=proj(cam,[x*0.55,y*0.55,z*0.55]);
-    let dx=q.x-o.x, dy=q.y-o.y;
-    const l=Math.hypot(dx,dy)||1;
-    dx=dx/l*L; dy=dy/l*L;
-    const isZ = z!==0;
-    ctx.strokeStyle = isZ?'rgba(217,185,120,.55)':'rgba(122,160,214,.4)';
-    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ox+dx,oy+dy); ctx.stroke();
-    ctx.fillStyle = isZ?'rgba(217,185,120,.75)':'rgba(122,160,214,.55)';
-    ctx.fillText(label, ox+dx*1.22-2.5, oy+dy*1.22+3);
+
+  // 底衬：极淡的暗圆 + 一道细环，只为把字母从网格里托出来，不构成色块
+  const bg=ctx.createRadialGradient(ox,oy,0,ox,oy,R);
+  bg.addColorStop(0,'rgba(9,14,24,.70)');
+  bg.addColorStop(.60,'rgba(9,14,24,.40)');
+  bg.addColorStop(1,'rgba(9,14,24,0)');
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.arc(ox,oy,R,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(122,160,214,.07)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(ox,oy,ringR,0,Math.PI*2); ctx.stroke();
+
+  ctx.font='600 '+Math.round(clamp(L*0.40,9,11))+'px ui-monospace,Menlo,monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  const put=(txt,x,y,hex,fade)=>{                 // 带描边的字母
+    ctx.lineWidth=3; ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(6,10,18,.92)';
+    ctx.strokeText(txt,x,y);
+    ctx.fillStyle=hexA(hex,.80*fade+.14);
+    ctx.fillText(txt,x,y);
+  };
+
+  const axes=AXIS_DEFS.map(a=>{
+    const sx= V.dot(a.v,cam.r), sy=-V.dot(a.v,cam.u);
+    const mag=Math.hypot(sx,sy);                  // 0 = 与视线平行
+    return {hex:a.hex,label:a.label,mag,
+            ux: mag>1e-6? sx/mag:0, uy: mag>1e-6? sy/mag:1,
+            depth: -V.dot(a.v,cam.f)};            // >0 指向观察者
+  }).sort((p,q)=>p.depth-q.depth);
+
+  const labels=[];
+  for(const a of axes){
+    const near = a.depth>=0;
+    const fade = near?1:.52;
+
+    const al=clamp(L*0.26,5.6,7.8), aw=al*0.42;   // 箭头随轴长缩放，小画布上不至于显得笨重
+
+    if(a.mag<0.15){                              // 垂直纸面：空心圆
+      const r=clamp(L*0.19,4.8,6)*(near?1:.86);
+      ctx.beginPath(); ctx.arc(ox,oy,r,0,Math.PI*2);
+      ctx.fillStyle=hexA(a.hex,.09*fade+.01); ctx.fill();
+      ctx.strokeStyle=hexA(a.hex,.72*fade); ctx.lineWidth=1.2; ctx.stroke();
+      labels.push({t:a.label,x:ox+r+3.4,y:oy-r-1.4,hex:a.hex,fade});
+      continue;
+    }
+
+    const len=L*(0.46+0.54*a.mag);
+    const tx=ox+a.ux*len, ty=oy+a.uy*len;
+    const px=-a.uy, py=a.ux;                      // 轴的法向，用来摆箭头两翼
+
+    const g=ctx.createLinearGradient(ox,oy,tx,ty);
+    g.addColorStop(0,hexA(a.hex,.08*fade));
+    g.addColorStop(1,hexA(a.hex,.92*fade));
+    ctx.strokeStyle=g; ctx.lineWidth=1.6; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(ox,oy);
+    ctx.lineTo(tx-a.ux*al*0.62, ty-a.uy*al*0.62);  // 收在箭头根部，避免线头戳出箭尖
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(tx,ty);
+    ctx.lineTo(tx-a.ux*al+px*aw, ty-a.uy*al+py*aw);
+    ctx.lineTo(tx-a.ux*al-px*aw, ty-a.uy*al-py*aw);
+    ctx.closePath();
+    ctx.fillStyle=hexA(a.hex,.92*fade);
+    ctx.fill();
+
+    labels.push({t:a.label,x:tx+a.ux*(al+2.6),y:ty+a.uy*(al+2.6),hex:a.hex,fade});
   }
+
+  /* 字母避让：视线贴近某根轴时，两根轴在屏幕上的方向会很接近，字母挤到一处。
+     锚点近于 MIN 就沿连线各退一半，迭代三次足够收敛——只挪字，不改轴向。 */
+  const MIN=Math.max(12,L*0.48);
+  for(let it=0;it<3;it++){
+    for(let i=0;i<labels.length;i++){
+      for(let j=i+1;j<labels.length;j++){
+        const p=labels[i], q=labels[j];
+        let dx=q.x-p.x, dy=q.y-p.y, d=Math.hypot(dx,dy);
+        if(d>=MIN) continue;
+        if(d<0.01){ dx=1; dy=0; d=1; }
+        const k=(MIN-d)/2/d;
+        p.x-=dx*k; p.y-=dy*k; q.x+=dx*k; q.y+=dy*k;
+      }
+    }
+  }
+  for(const l of labels){
+    put(l.t, clamp(l.x,8,W-8), clamp(l.y,9,H-9), l.hex, l.fade);
+  }
+
+  // 原点
+  ctx.beginPath(); ctx.arc(ox,oy,1.7,0,Math.PI*2);
+  ctx.fillStyle='rgba(223,231,242,.6)'; ctx.fill();
   ctx.restore();
 }
 
