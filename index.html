@@ -65,6 +65,15 @@
   }
   .ghost-btn:hover{color:var(--gold-hi);border-color:rgba(217,185,120,.45);background:rgba(217,185,120,.08);}
   .ghost-btn svg{width:12px;height:12px;}
+  .nav-link{
+    display:inline-flex;align-items:center;gap:3px;
+    height:30px;padding:0 4px;
+    color:var(--dim);text-decoration:none;opacity:.85;
+    font-size:10.5px;letter-spacing:.06em;border-radius:6px;
+    transition:color .18s,opacity .18s;
+  }
+  .nav-link:hover,.nav-link:focus-visible{color:var(--gold-hi);opacity:1;}
+  .nav-link .arw{font-size:9.5px;opacity:.7;}
 
   /* ---------- layout ---------- */
   .app{
@@ -73,14 +82,13 @@
     gap:10px; padding:10px 12px 12px;
   }
 
-  /* ---------- 署名 ---------- */
+  /* ---------- 署名（贴在右侧面板右下角） ---------- */
   .site-footer{
-    flex:none;
-    padding:7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
-    text-align:center;
+    flex:none; align-self:flex-end;
+    padding:0 14px 9px;
     font-family:var(--sans);
-    font-size:11px; line-height:1.5; letter-spacing:.04em;
-    color:var(--dim);
+    font-size:10px; line-height:1.5; letter-spacing:.04em;
+    color:var(--dim); white-space:nowrap; user-select:none;
   }
   .panel{
     background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
@@ -347,6 +355,7 @@
     .brand-txt span{font-size:7.5px;letter-spacing:.14em;margin-top:1px;}
     .top-right{gap:6px;}
     .ghost-btn{height:34px;padding:0 11px;font-size:12px;}
+    .nav-link{height:34px;padding:0 6px;font-size:11px;}
 
     .app{
       grid-template-columns:minmax(0,1fr);
@@ -416,7 +425,8 @@
   /* ================= 触摸设备：放大可点区域 ================= */
   @media (hover:none),(pointer:coarse){
     .chip,.seg button,.row2 button,.gold-btn,.auto-btn,
-    .saved-item,.solid-btn,.ghost-btn{touch-action:manipulation;}
+    .saved-item,.solid-btn,.ghost-btn,.nav-link{touch-action:manipulation;}
+    .nav-link{height:40px;padding:0 8px;font-size:11.5px;}
     .chip{height:34px;padding:0 12px;font-size:11.5px;}
     .seg button{height:40px;font-size:12px;}
     .row2 button{height:40px;font-size:12px;}
@@ -516,6 +526,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
       重置
     </button>
+    <a class="nav-link" href="https://wtsswt.github.io/projects/" title="其他项目 · 个人项目导航页">其他项目<span class="arw" aria-hidden="true">↗</span></a>
   </div>
 </div>
 
@@ -687,6 +698,7 @@
       <p class="foot-note" id="footNote">按第一角投影绘制主视 / 侧视 / 俯视图，比例 1:1。</p>
       </div>
     </div>
+    <footer class="site-footer">© 2026 swt · AI 辅助生成</footer>
   </aside>
 </div>
 
@@ -709,8 +721,6 @@
     <span><i></i> 45° 投影辅助线</span>
   </div>
 </div>
-
-<footer class="site-footer">© 2026 swt · AI 辅助生成</footer>
 
 <script>
 /* =========================================================
