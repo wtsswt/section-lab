@@ -1869,18 +1869,19 @@ function curveVisibleAt(p, d){
 /* 轮廓上一点被另一立体挡住？沿视线反方向行进，看是否与该立体表面相交。
    注意轮廓所在的 3D 点取在"过立体中心、垂直于视线"的那个截面上（顶视取上沿）。 */
 function surfPoint3(view, which, u, v){
+  // 纸面 u 是"向右"，国标下主视/俯视右向是 −x，所以这两处 x 取 −u
   if(which==='A'){
-    if(view==='front') return [u, 0, -v];
+    if(view==='front') return [-u, 0, -v];
     if(view==='left')  return [0, u, -v];
-    return [u, -v, PIPE_A.H];
+    return [-u, -v, PIPE_A.H];
   }
   if(pipe.type==='sphere'){
-    if(view==='front') return [u, pipe.e, -v];
+    if(view==='front') return [-u, pipe.e, -v];
     if(view==='left')  return [0, u, -v];
-    return [u, -v, pipe.z0];
+    return [-u, -v, pipe.z0];
   }
-  if(view==='front') return [u, pipe.e, -v];
-  if(view==='top')   return [u, -v, pipe.z0];
+  if(view==='front') return [-u, pipe.e, -v];
+  if(view==='top')   return [-u, -v, pipe.z0];
   return [-pipe.L, u, -v];
 }
 
@@ -1949,10 +1950,12 @@ function drawOrtho(){
   }
 }
 /* 三个视图的视线方向与视图平面坐标：uv 把世界点映到 (u,v)，u 向右、v 向下 */
+/* 纸面方向同样按国标：主视图 X 向左、俯视图 Y 向下、左视图 Y 向右，
+   所以主视/俯视的 u 取 −x（u 恒为纸面右向）。dir 是视线方向，跟着取反。 */
 const ORTHO_FRAMES={
-  front:{label:'主视', en:'FRONT', dir:[0,1,0],  uv:p=>[p[0],-p[2]]},
-  left: {label:'左视', en:'LEFT',  dir:[1,0,0],  uv:p=>[p[1],-p[2]]},
-  top:  {label:'俯视', en:'TOP',   dir:[0,0,-1], uv:p=>[p[0],-p[1]]}
+  front:{label:'主视', en:'FRONT', dir:[0,-1,0], uv:p=>[-p[0],-p[2]]},
+  left: {label:'左视', en:'LEFT',  dir:[-1,0,0], uv:p=>[ p[1],-p[2]]},
+  top:  {label:'俯视', en:'TOP',   dir:[0,0,1],  uv:p=>[-p[0],-p[1]]}
 };
 
 /* 画一个正交视图：投影面填充 + 轮廓断线 + 相贯线投影。
@@ -2822,10 +2825,15 @@ document.getElementById('btnAuto').onclick=function(){
 /* 视角：主视 / 俯视 / 左视 / 立体。都是真的把 3D 相机转过去，所以任何时候
    接着拖都能从当前方向继续转，不会从"平面图"跳回立体。
    立体同时是复位：角度和缩放一起回默认，因此不再单设「复位视角」按钮。 */
+/* 国标（第一角）把 +X 定在物体的左向、+Y 定在前向、+Z 定在上向，整页统一按这套走：
+   主视从前方（+Y 一侧）看，画面里 X 指向左、Z 指向上、Y 垂直纸面朝观察者；
+   俯视从上往下看，X 仍向左、Y 向下（前方）；
+   左视从左侧（+X 一侧）看，Y 向右（前方）、Z 向上。
+   三个预设只改 yaw/pitch，世界坐标本身不变，所以平面方程、判型、统计都不受影响。 */
 const CAM_PRESETS={
-  front:{yaw:-90, pitch:0},
-  top:  {yaw:-90, pitch:90},
-  left: {yaw:180, pitch:0},
+  front:{yaw:90, pitch:0},
+  top:  {yaw:90, pitch:90},
+  left: {yaw:0,  pitch:0},
   iso:  {yaw:52,  pitch:21, dist:6.4}    // 带 dist 的才算复位，其余只改角度
 };
 
@@ -2968,9 +2976,10 @@ function drawSheet(){
 
   /* —— 布局与比例 —— */
   const views=[
-    {label:'主视图', en:'FRONT VIEW', cx:W*0.345, cy:H*0.315, toV:[0,-1,0], map:p=>[p[0],p[2]]},
-    {label:'侧视图', en:'SIDE VIEW',  cx:W*0.630, cy:H*0.315, toV:[-1,0,0], map:p=>[p[1],p[2]]},
-    {label:'俯视图', en:'TOP VIEW',   cx:W*0.345, cy:H*0.705, toV:[0,0,1],  map:p=>[p[0],-p[1]]}
+    // 纸面横向按国标：主视/俯视的横向是 −x（X 指向左），侧视横向是 +y（Y 指向右）
+    {label:'主视图', en:'FRONT VIEW', cx:W*0.345, cy:H*0.315, toV:[0,-1,0], map:p=>[-p[0],p[2]]},
+    {label:'侧视图', en:'SIDE VIEW',  cx:W*0.630, cy:H*0.315, toV:[-1,0,0], map:p=>[ p[1],p[2]]},
+    {label:'俯视图', en:'TOP VIEW',   cx:W*0.345, cy:H*0.705, toV:[0,0,1],  map:p=>[-p[0],-p[1]]}
   ];
   for(const v of views){
     const pts=solid.verts.map(v.map);
