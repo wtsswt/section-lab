@@ -123,6 +123,7 @@
     box-shadow:inset 0 0 0 1px rgba(217,185,120,.22);
   }
   .solid-grid.duo{grid-template-columns:repeat(2,1fr);}
+  .solid-grid.trio{grid-template-columns:repeat(3,1fr);}
   .split{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
   .split .kv{
     border:1px solid var(--line-soft);border-radius:7px;padding:6px 8px;
@@ -576,18 +577,28 @@ var _hmt = _hmt || [];
           <div class="kv"><span>外半径 R₁</span><b>1.00</b></div>
         </div>
 
-        <div class="sec-head" style="margin-top:12px"><h3>空心半径 r₁</h3><em id="mainRVal">0.52</em></div>
-        <div class="slider-row" style="margin-top:0">
-          <input type="range" id="mainR" min="0" max="0.80" step="0.01" value="0.52">
+        <div id="mainInnerWrap">
+          <div class="sec-head" style="margin-top:12px"><h3>空心半径 r₁</h3><em id="mainRVal">0.52</em></div>
+          <div class="slider-row" style="margin-top:0">
+            <input type="range" id="mainR" min="0" max="0.80" step="0.01" value="0.52">
+          </div>
+          <p class="hint" style="margin-top:2px">主体是纵向圆筒，r₁ = 0 即实心圆柱；壁厚 t = R₁ − r₁ = <b id="mainWallVal" style="color:var(--gold-dim);font-weight:500">0.48</b>。外壁、内壁都算立体的表面，各与从体交出一圈相贯线。</p>
         </div>
-        <p class="hint" style="margin-top:2px">主体是纵向圆筒，r₁ = 0 即实心圆柱；壁厚 t = R₁ − r₁ = <b id="mainWallVal" style="color:var(--gold-dim);font-weight:500">0.48</b>。外壁、内壁都算立体的表面，各与从体交出一圈相贯线。</p>
 
         <div class="sec-head" style="margin-top:16px"><h3>从体</h3><span>CROSS SOLID</span></div>
-        <div class="solid-grid duo" id="pipeGrid"></div>
+        <div class="solid-grid trio" id="pipeGrid"></div>
 
         <div class="sec-head" style="margin-top:14px"><h3>从体半径 R₂</h3><em id="pipeRVal">0.62</em></div>
         <div class="slider-row" style="margin-top:0">
           <input type="range" id="pipeR" min="0.30" max="1.55" step="0.01" value="0.62">
+        </div>
+
+        <div id="crossInnerWrap" class="hidden-block">
+          <div class="sec-head" style="margin-top:12px"><h3>从体空心半径 r₂</h3><em id="pipeInnerVal">0.36</em></div>
+          <div class="slider-row" style="margin-top:0">
+            <input type="range" id="pipeInner" min="0" max="0.56" step="0.01" value="0.36">
+          </div>
+          <p class="hint" style="margin-top:2px">r₂ = 0 即实心；壁厚 t₂ = R₂ − r₂ = <b id="pipeWallVal" style="color:var(--gold-dim);font-weight:500">0.26</b>。从体的外壁、内孔壁各与主体交出一组曲线。</p>
         </div>
 
         <div class="sec-head" style="margin-top:12px"><h3>轴线高度 z₀</h3><em id="pipeZVal">0.00</em></div>
@@ -1441,25 +1452,41 @@ function stopFly(){ if(camFly){ camFly=null; fastRender=false; } }
    5.5 相贯线（两立体表面的交线）
    ========================================================= */
 const PIPE_A = { R:1.00, r:0.52, H:1.55 };   // 主体：竖直圆柱，轴为 z 轴；r 为内孔半径，0 即实心
-/* 从体仍是横置的圆柱或球，穿过主体的侧壁。
-   主体 r > 0 时是一根纵向圆筒：外壁、内壁两张同轴圆柱面，从体与它们各交一圈，
-   于是同一侧会有内外两条相贯线——画法几何里的「圆柱与圆筒相贯」。 */
-const pipe   = { type:'cylinder', R:0.62, z0:0, e:0, L:1.55 };
+/* 从体是横置的圆柱 / 圆锥 / 球，穿过主体的侧壁。
+   两边都可以是空心的：主体有外壁 R₁、内壁 r₁，从体（圆柱）有外壁 R₂、内孔 r₂。
+   每一种「主体某层壁 × 从体某层壁」都会交出一组曲线，所以最多 2×2 组、共 8 条。
+   这就是画法几何里「圆筒与圆筒相贯」的一般情形。 */
+const pipe   = { type:'cylinder', R:0.62, r:0, z0:0, e:0, L:1.55 };
 function hollowMain(){ return PIPE_A.r>0.01; }
+function hollowCross(){ return pipe.type==='cylinder' && pipe.r>0.01; }
+let savedMainR = 0.52;                       // 切到圆锥时主体要变成实心，先把这个值存起来
+/* 圆锥：锥顶在 x = −L、底圆在 x = +L，底圆半径 R。母线与轴线的夹角由 R/(2L) 定。 */
+function coneK(){ return pipe.R/(2*pipe.L); }
 
 let pipeCurves = [];                                     // [{pts, closed}]
 let pipeFeat   = [];                                     // [{p, label}]
 
-/* 从体表面参数化：(u,v) → 世界坐标。圆柱轴沿 x，球心在 (0,e,z0) */
-function pipePoint(u,v){
+/* 从体表面参数化：(u,v) → 世界坐标，Rc 是这一层表面的半径参数——
+   圆柱取半径、球取球半径、圆锥取底圆半径（母线按 v 从锥顶缩到底圆）。
+   圆柱轴沿 x、球心在 (0,e,z₀)；圆锥锥顶在 (−L, e, z₀)。 */
+function crossPoint(u,v,Rc){
+  const RR=(Rc===undefined)?pipe.R:Rc;
   const c=Math.cos(u), s=Math.sin(u);
   if(pipe.type==='sphere'){
     const sv=Math.sin(v), cv=Math.cos(v);
-    return [pipe.R*sv*c, pipe.e+pipe.R*sv*s, pipe.z0+pipe.R*cv];
+    return [RR*sv*c, pipe.e+RR*sv*s, pipe.z0+RR*cv];
   }
-  return [v, pipe.e+pipe.R*c, pipe.z0+pipe.R*s];
+  if(pipe.type==='cone'){
+    const r=RR*v;
+    return [-pipe.L+2*pipe.L*v, pipe.e+r*c, pipe.z0+r*s];
+  }
+  return [v, pipe.e+RR*c, pipe.z0+RR*s];
 }
-function pipeVRange(){ return pipe.type==='sphere' ? [0,Math.PI] : [-pipe.L, pipe.L]; }
+function crossVRange(){
+  if(pipe.type==='sphere') return [0,Math.PI];
+  if(pipe.type==='cone') return [0.012,1];     // 锥顶处所有 u 缩成一点，避开退化网格
+  return [-pipe.L, pipe.L];
+}
 
 /* 主体隐函数：半径 Rm 的那张同轴圆柱面。外壁取 R，内壁取 r。 */
 function pipeF(p, Rm){
@@ -1467,31 +1494,35 @@ function pipeF(p, Rm){
   return p[0]*p[0] + p[1]*p[1] - R*R;
 }
 
-/* 从体表面外法向。side='in' 指主体的内壁：法向朝轴线，指向筒内的空腔。 */
-function pipeNormal(p, side){
+/* 从体表面外法向。cIn=true 指圆柱的内孔壁：法向朝轴线，指向筒内的空腔。 */
+function crossNormal(p, cIn, Rc){
   if(pipe.type==='sphere'){
     return V.norm([p[0], p[1]-pipe.e, p[2]-pipe.z0]);
   }
   const dy=p[1]-pipe.e, dz=p[2]-pipe.z0, r=Math.hypot(dy,dz)||1;
-  const sg = side==='in' ? -1 : 1;
+  const sg = cIn ? -1 : 1;
+  if(pipe.type==='cone'){
+    // 锥面 F = ρ − k(x+L)：∇F = (−k, cos u, sin u)
+    const k=((Rc===undefined)?pipe.R:Rc)/(2*pipe.L);
+    return V.norm([-sg*k, sg*dy/r, sg*dz/r]);
+  }
   return [0, sg*dy/r, sg*dz/r];
 }
 
-/* 求交：在从体表面的 (u,v) 网格上做 marching squares，取与主体半径 Rm 那张
-   同轴圆柱面的等值线。圆筒有内外两张壁，所以同一个从体上要跑两遍。
-   注意 Rm 是"主体"的半径，跟从体自己的尺寸无关。 */
-function pierceIso(Rm){
-  const isBall = pipe.type==='sphere';
-  const nu=192, nv=(isBall?88:112);
-  const [v0,v1]=pipeVRange();
+/* 求交：在从体表面（半径参数 Rc 那一层）的 (u,v) 网格上做 marching squares，
+   取与主体半径 Rm 那张同轴圆柱面的等值线。Rm 是主体的壁，Rc 是从体的壁，
+   两者都由调用方遍历，所以「圆筒 × 圆筒」的四组曲线共用这一段。 */
+function pierceIso(Rm, Rc){
+  const nu=192, nv=(pipe.type==='sphere'?88:112);
+  const [v0,v1]=crossVRange();
   const g=[];
   for(let i=0;i<=nu;i++){
     g[i]=[];
-    for(let j=0;j<=nv;j++) g[i][j]=pipeF(pipePoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv), Rm);
+    for(let j=0;j<=nv;j++) g[i][j]=pipeF(crossPoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv, Rc), Rm);
   }
 
   const nodes=new Map();
-  const pAt=(i,j)=>pipePoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv);
+  const pAt=(i,j)=>crossPoint(2*Math.PI*i/nu, v0+(v1-v0)*j/nv, Rc);
   function nodeAt(kind,i,j){
     // v 边的下标 i 要按 nu 取模，否则 u=0 与 u=2π 会被当成两条不同的边，曲线在此断开
     const key=(kind==='h'?'h':'v')+(kind==='v'?(i%nu):i)+'_'+j;
@@ -1543,27 +1574,36 @@ function pierceIso(Rm){
 }
 
 function solvePierce(){
-  const walls = hollowMain()
-    ? [{side:'out', Rm:PIPE_A.R}, {side:'in', Rm:PIPE_A.r}]
-    : [{side:'out', Rm:PIPE_A.R}];
+  const mWalls = hollowMain()
+    ? [{mIn:false, Rm:PIPE_A.R}, {mIn:true, Rm:PIPE_A.r}]
+    : [{mIn:false, Rm:PIPE_A.R}];
+  const cWalls = hollowCross()
+    ? [{cIn:false, Rc:pipe.R}, {cIn:true, Rc:pipe.r}]
+    : [{cIn:false, Rc:pipe.R}];
   const all=[];
-  for(const w of walls) for(const pts of pierceIso(w.Rm)) all.push({pts, side:w.side});
+  for(const mw of mWalls) for(const cw of cWalls){
+    for(const pts of pierceIso(mw.Rm, cw.Rc)) all.push({pts, mIn:mw.mIn, cIn:cw.cIn, Rc:cw.Rc});
+  }
   all.sort((a,b)=>b.pts.length-a.pts.length);
   pipeCurves = all.map(c=>{
     const pts=c.pts, f=pts[0], l=pts[pts.length-1];
-    return {pts, side:c.side, closed:Math.hypot(f[0]-l[0],f[1]-l[1],f[2]-l[2])<1e-6};
+    return {pts, mIn:c.mIn, cIn:c.cIn, Rc:c.Rc,
+            closed:Math.hypot(f[0]-l[0],f[1]-l[1],f[2]-l[2])<1e-6};
   });
   collectPipeFeatures();
 }
 
-/* 特征点：每支曲线的最高 / 最低点（转向轮廓线上的点） */
+/* 特征点：每支曲线的最高 / 最低点（转向轮廓线上的点）。
+   只标最外那一组（主体外壁 × 从体外壁），其余几组跟着画出来就够，
+   不然八条曲线各标两点，画面全是圆点。 */
 function collectPipeFeatures(){
   pipeFeat=[];
   for(const c of pipeCurves){
+    if(c.mIn||c.cIn) continue;
     let hi=c.pts[0], lo=c.pts[0];
     for(const p of c.pts){ if(p[2]>hi[2]) hi=p; if(p[2]<lo[2]) lo=p; }
-    pipeFeat.push({p:hi, kind:'hi', side:c.side});
-    pipeFeat.push({p:lo, kind:'lo', side:c.side});
+    pipeFeat.push({p:hi, kind:'hi', c});
+    pipeFeat.push({p:lo, kind:'lo', c});
   }
 }
 
@@ -1572,12 +1612,13 @@ function collectPipeFeatures(){
    与位置有关的偏角，正对轴线看（俯视）时相贯线正好落在主体轮廓上，
    这点偏角就足以把它判成不可见，整条金色线会缩成两个点。
    相切情形按可见处理，和右下三视图卡片用同一条判据。
-   side='in' 的曲线长在圆筒内壁上，法向朝轴线——只有能看进筒口时才可见。 */
-function pipeVisible(p, cam, side){
+   曲线长在内壁上时法向朝轴线（主体内壁 mIn、从体内孔 cIn），只有能看进筒口才可见。 */
+function pipeVisible(p, cam, c){
   const v = cam.ortho ? V.mul(cam.f,-1) : V.sub(cam.eye,p);
+  const sgn = c.mIn ? -1 : 1;
   const nA=[p[0],p[1],0];
-  if(V.dot(nA,v) < -1e-6) return false;
-  return V.dot(pipeNormal(p, side), v) >= -1e-6;
+  if(sgn*V.dot(nA,v) < -1e-6) return false;
+  return V.dot(crossNormal(p, c.cIn, c.Rc), v) >= -1e-6;
 }
 
 /* ---------- 立体绘制 ---------- */
@@ -1589,9 +1630,10 @@ function tubeFrame(axis){
   return {a,e1,e2};
 }
 
-/* 挖孔用的判据：从体占住的实体区域（圆柱或球）。
-   主体的外壁、内壁都拿它裁剪，于是从体穿外壁的地方在外壁上开孔，
-   穿内壁的地方在内壁上开孔，孔口边界正好落在解出的相贯线上。 */
+/* 挖孔用的判据：从体占住的整块区域（圆柱的全截面、球、圆锥），
+   注意取的是"外轮廓包住的体积"，不是圆筒壁厚那一圈——从体是一根管子时，
+   它整个插在主体里，管子占的正是它的外廓；内孔是管子自己的空腔，与主体无关。
+   主体的外壁、内壁都拿它裁剪，孔口边界正好落在解出的相贯线上。 */
 function insideB(p){
   if(pipe.type==='sphere'){
     const dx=p[0], dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
@@ -1599,6 +1641,7 @@ function insideB(p){
   }
   if(Math.abs(p[0])>=pipe.L) return false;
   const dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+  if(pipe.type==='cone') return Math.hypot(dy,dz) < coneK()*(p[0]+pipe.L);
   return dy*dy+dz*dz < pipe.R*pipe.R;
 }
 
@@ -1665,7 +1708,7 @@ function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes, inner){
     }
     const seams=[];
     for(let i=0;i<N;i++) if(face[i]!==face[(i+1)%N]) seams.push(2*Math.PI*(i+1)/N);
-    rings.push({rad, inner:sg<0, seams, ring:(t,s)=>pt(rad,t,s)});
+    rings.push({rad, inner:sg<0, seams, caps:[halfLen,-halfLen], ring:(t,s)=>pt(rad,t,s)});
   }
 
   /* 两端封口。侧壁单独存在时，正对轴线看过去整段管子会退化成一条线，
@@ -1694,6 +1737,66 @@ function tubeBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes, inner){
   return {quads, rings, tint, holes, halfLen, N};
 }
 
+/* 造一个圆锥：锥顶在 center − a·halfLen，底圆（半径 R）在 center + a·halfLen。
+   锥面用二维网格铺面片，底圆补一块圆盘——正对轴线看时要能看到那块底面，
+   否则锥体会像一个空心喇叭。 */
+function coneBundle(cam, center, axis, R, halfLen, N, nSeg, tint, holes){
+  const {a,e1,e2}=tubeFrame(axis);
+  const k=R/(2*halfLen);
+  const pt=(t,s)=>{
+    const r=k*(s+halfLen), c=Math.cos(t), sn=Math.sin(t);
+    return [center[0]+r*(c*e1[0]+sn*e2[0])+a[0]*s,
+            center[1]+r*(c*e1[1]+sn*e2[1])+a[1]*s,
+            center[2]+r*(c*e1[2]+sn*e2[2])+a[2]*s];
+  };
+  const quads=[], rings=[];
+  const face=[];
+  for(let i=0;i<N;i++){
+    const t0=2*Math.PI*i/N, t1=2*Math.PI*(i+1)/N, tm=(t0+t1)/2;
+    const nrm=V.norm([-k*a[0]+Math.cos(tm)*e1[0]+Math.sin(tm)*e2[0],
+                      -k*a[1]+Math.cos(tm)*e1[1]+Math.sin(tm)*e2[1],
+                      -k*a[2]+Math.cos(tm)*e1[2]+Math.sin(tm)*e2[2]]);
+    const probe=pt(tm,0);
+    face.push(V.dot(nrm, cam.ortho ? V.mul(cam.f,-1) : V.sub(cam.eye,probe))>0);
+    for(let j=0;j<nSeg;j++){
+      const s0=-halfLen+2*halfLen*j/nSeg, s1=-halfLen+2*halfLen*(j+1)/nSeg;
+      let poly=[pt(t0,s0), pt(t1,s0), pt(t1,s1), pt(t0,s1)];
+      if(holes){
+        poly=clipPolyBy(poly,holes);
+        if(poly.length<3) continue;
+      }
+      const P=poly.map(q=>proj(cam,q));
+      let zs=0; for(const q of P) zs+=q.z;
+      quads.push({pts:P, z:zs/P.length, n:nrm});
+    }
+  }
+  const seams=[];
+  for(let i=0;i<N;i++) if(face[i]!==face[(i+1)%N]) seams.push(2*Math.PI*(i+1)/N);
+  rings.push({rad:R, inner:false, seams, caps:[halfLen], ring:(t,s)=>pt(t,s)});
+
+  // 底圆盘：平的那一块，半径从 0 到 R 都落在 s = halfLen 这个平面上
+  const nCap=Math.max(2,Math.round(N/24));
+  const nrm=[a[0],a[1],a[2]];
+  const ptCap=(r,t)=>[center[0]+r*(Math.cos(t)*e1[0]+Math.sin(t)*e2[0])+a[0]*halfLen,
+                      center[1]+r*(Math.cos(t)*e1[1]+Math.sin(t)*e2[1])+a[1]*halfLen,
+                      center[2]+r*(Math.cos(t)*e1[2]+Math.sin(t)*e2[2])+a[2]*halfLen];
+  for(let i=0;i<N;i++){
+    const t0=2*Math.PI*i/N, t1=2*Math.PI*(i+1)/N;
+    for(let j=0;j<nCap;j++){
+      const r0=R*j/nCap, r1=R*(j+1)/nCap;
+      let poly=[ptCap(r0,t0), ptCap(r1,t0), ptCap(r1,t1), ptCap(r0,t1)];
+      if(holes){
+        poly=clipPolyBy(poly,holes);
+        if(poly.length<3) continue;
+      }
+      const P=poly.map(q=>proj(cam,q));
+      let zs=0; for(const q of P) zs+=q.z;
+      quads.push({pts:P, z:zs/P.length, n:nrm});
+    }
+  }
+  return {quads, rings, tint, holes, halfLen, N};
+}
+
 function strokeBundle(cam, ctx, bd){
   if(!bd.rings) return;
   const {rings, halfLen, N, tint, holes}=bd;
@@ -1703,7 +1806,7 @@ function strokeBundle(cam, ctx, bd){
     ctx.strokeStyle=tint.rim;
     if(rg.inner) ctx.globalAlpha=0.55;        // 内壁的轮廓线压暗，别抢外轮廓
     ctx.lineWidth=1.15;
-    for(const s of [halfLen,-halfLen]){
+    for(const s of (rg.caps||[halfLen,-halfLen])){
       ctx.beginPath();
       for(let i=0;i<=N;i++){
         const p=proj(cam,rg.ring(2*Math.PI*i/N, s));
@@ -1734,7 +1837,7 @@ function strokeBundle(cam, ctx, bd){
    两遍必须分开画、且有先后：遮挡段的虚线要落在半透明壁的**下面**。
    以前所有段都画在最上层，被遮的那半截虚线压在半透明壁的正面，看着就是
    "近虚远实"——虚实判得没错，但画出来是反的。
-   圆筒内壁那圈（side='in'）画细一点、暗一点：它本来就埋在筒壁里，不该和外圈抢视觉。 */
+   圆筒内壁那圈（mIn / cIn）画细一点、暗一点：它本来就埋在壁里，不该和外圈抢视觉。 */
 function drawPierceCurves(cam, ctx, pass){
   const wantVis = pass!=='hid';
   ctx.lineCap='round';
@@ -1742,18 +1845,18 @@ function drawPierceCurves(cam, ctx, pass){
   const setStyle = (vis, inner) => {
     if(vis){
       ctx.setLineDash([]);
-      ctx.strokeStyle=inner?'rgba(255,238,196,.86)':'rgba(255,238,196,.98)';
+      ctx.strokeStyle=inner?'rgba(255,238,196,.84)':'rgba(255,238,196,.98)';
       ctx.lineWidth=inner?1.8:2.3;
       ctx.shadowBlur=inner?4:7; ctx.shadowColor='rgba(240,205,130,.75)';
     }else{
       ctx.setLineDash([4,4.5]);
-      ctx.strokeStyle=inner?'rgba(217,185,120,.44)':'rgba(217,185,120,.62)';   // 垫在壁下会被压暗，透明度给足
+      ctx.strokeStyle=inner?'rgba(217,185,120,.42)':'rgba(217,185,120,.62)';   // 垫在壁下会被压暗，透明度给足
       ctx.lineWidth=inner?1.05:1.25;
       ctx.shadowBlur=0;
     }
   };
   for(const c of pipeCurves){
-    const pts=c.pts, inner=c.side==='in';
+    const pts=c.pts, inner=!!(c.mIn||c.cIn);
     let run=null;
     const flush=()=>{
       if(run && run.P.length>1 && run.vis===wantVis){
@@ -1767,7 +1870,7 @@ function drawPierceCurves(cam, ctx, pass){
     for(let k=0;k<pts.length-1;k++){
       const a=pts[k], b=pts[k+1];
       const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
-      const vis=pipeVisible(mid,cam,c.side);
+      const vis=pipeVisible(mid,cam,c);
       if(!run || run.vis!==vis){ flush(); run={vis, P:[proj(cam,a)]}; }
       run.P.push(proj(cam,b));
     }
@@ -1777,7 +1880,7 @@ function drawPierceCurves(cam, ctx, pass){
   }
   // 特征点跟随所在段一起分层：可见的在上层，被挡的跟着沉到壁下
   for(const f of pipeFeat){
-    if(pipeVisible(f.p,cam,f.side)!==wantVis) continue;
+    if(pipeVisible(f.p,cam,f.c)!==wantVis) continue;
     const q=proj(cam,f.p);
     ctx.beginPath();
     ctx.arc(q.x,q.y,3.1,0,Math.PI*2);
@@ -1844,8 +1947,12 @@ function renderPierce(ctx){
   const A=tubeBundle(cam,[0,0,0],[0,0,1],PIPE_A.R,PIPE_A.H,Math.round(96*lo),Math.round(34*lo),TINT_A, insideB,
                      hollowMain()?PIPE_A.r:0);
   const isBall = pipe.type==='sphere';
+  const isCone = pipe.type==='cone';
   const B = isBall ? null
-    : tubeBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,Math.round(56*lo),Math.round(24*lo),TINT_B, null, 0);
+    : isCone
+      ? coneBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,Math.round(88*lo),Math.round(44*lo),TINT_B, null)
+      : tubeBundle(cam,[0,pipe.e,pipe.z0],[1,0,0],pipe.R,pipe.L,Math.round(56*lo),Math.round(24*lo),TINT_B, null,
+                   hollowCross()?pipe.r:0);
 
   paintTubeLayer('A',A.quads,cam);
   if(isBall) paintBallLayer('B',[0,pipe.e,pipe.z0],pipe.R,cam);
@@ -1863,7 +1970,8 @@ function renderPierce(ctx){
     ctx.globalAlpha=0.33; ctx.drawImage(bufFor('A'),0,0,W,H);
   }else{
     ctx.globalAlpha=0.33; ctx.drawImage(bufFor('A'),0,0,W,H);
-    ctx.globalAlpha=0.24; ctx.drawImage(bufFor('B'),0,0,W,H);
+    // 圆锥的体量大，压得太实会把主体的壁整片盖掉，透明度再低一档
+    ctx.globalAlpha=isCone?0.18:0.24; ctx.drawImage(bufFor('B'),0,0,W,H);
   }
   ctx.restore();
 
@@ -1902,25 +2010,44 @@ function orthoShape(view){
   // 俯视正对筒口：内孔那一圈是看得见的棱线，按实线画
   if(view==='top' && hollowMain()) A.bore = circlePoly(0,0,Math.min(PIPE_A.r,R1),128);
   let B;
-  if(view==='front'){
-    B = pipe.type==='sphere'
-      ? {poly:circlePoly(0,-z0,R2), inside:(u,v)=>u*u+(v+z0)*(v+z0)<=R2*R2+1e-9}
-      : {poly:rectPoly(-L,L,-z0-R2,-z0+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+z0)<=R2+1e-9};
-  }else if(view==='top'){
-    B = pipe.type==='sphere'
-      ? {poly:circlePoly(0,-e,R2), inside:(u,v)=>u*u+(v+e)*(v+e)<=R2*R2+1e-9}
-      : {poly:rectPoly(-L,L,-e-R2,-e+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+e)<=R2+1e-9};
+  if(pipe.type==='sphere'){
+    if(view==='front'){
+      B = {poly:circlePoly(0,-z0,R2), inside:(u,v)=>u*u+(v+z0)*(v+z0)<=R2*R2+1e-9};
+    }else if(view==='top'){
+      B = {poly:circlePoly(0,-e,R2), inside:(u,v)=>u*u+(v+e)*(v+e)<=R2*R2+1e-9};
+    }else{
+      B = {poly:circlePoly(e,-z0,R2), inside:(u,v)=>(u-e)*(u-e)+(v+z0)*(v+z0)<=R2*R2+1e-9};
+    }
+  }else if(pipe.type==='cone'){
+    // 圆锥：主视 / 俯视是三角形（底边在 u = −L，锥顶在 u = +L），左视沿轴看是底圆
+    if(view==='left'){
+      B = {poly:circlePoly(e,-z0,R2,96), inside:(u,v)=>(u-e)*(u-e)+(v+z0)*(v+z0)<=R2*R2+1e-9};
+    }else{
+      const cv = view==='front' ? -z0 : -e;
+      const half = u => R2*(L-u)/(2*L);
+      B = {poly:[[-L,cv-R2],[-L,cv+R2],[L,cv]],
+           inside:(u,v)=>u>=-L-1e-9 && u<=L+1e-9 && Math.abs(v-cv)<=half(u)+1e-9};
+    }
   }else{
-    B = {poly:circlePoly(e,-z0,R2), inside:(u,v)=>(u-e)*(u-e)+(v+z0)*(v+z0)<=R2*R2+1e-9};
+    if(view==='front'){
+      B = {poly:rectPoly(-L,L,-z0-R2,-z0+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+z0)<=R2+1e-9};
+    }else if(view==='top'){
+      B = {poly:rectPoly(-L,L,-e-R2,-e+R2), inside:(u,v)=>Math.abs(u)<=L+1e-9&&Math.abs(v+e)<=R2+1e-9};
+    }else{
+      B = {poly:circlePoly(e,-z0,R2), inside:(u,v)=>(u-e)*(u-e)+(v+z0)*(v+z0)<=R2*R2+1e-9};
+      // 左视正对从体的筒口：内孔那一圈是可见棱线，不是虚线
+      if(hollowCross()) B.bore = circlePoly(e,-z0,Math.min(pipe.r,R2),96);
+    }
   }
   return {A,B};
 }
 
 /* 相贯线在正交视图里是否可见：两块表面都必须朝向观察者（与透视版同一判据） */
-function curveVisibleAt(p, d, side){
+function curveVisibleAt(p, d, c){
   const nA=[p[0],p[1],0], ln=Math.hypot(nA[0],nA[1])||1;
-  if((-d[0]*nA[0]-d[1]*nA[1]-d[2]*nA[2])/ln < -1e-7) return false;
-  const nB=pipeNormal(p, side);
+  const sgn=c.mIn?-1:1;
+  if(sgn*(-d[0]*nA[0]-d[1]*nA[1]-d[2]*nA[2])/ln < -1e-7) return false;
+  const nB=crossNormal(p, c.cIn, c.Rc);
   return -(d[0]*nB[0]+d[1]*nB[1]+d[2]*nB[2]) >= -1e-7;
 }
 
@@ -1937,6 +2064,14 @@ function surfPoint3(view, which, u, v){
     if(view==='front') return [-u, pipe.e, -v];
     if(view==='left')  return [0, u, -v];
     return [-u, -v, pipe.z0];
+  }
+  if(pipe.type==='cone'){
+    if(view==='front') return [-u, pipe.e, -v];          // 轮廓落在过轴线的水平面上
+    if(view==='top')   return [-u, -v, pipe.z0];
+    // 沿轴看：轮廓是底圆，锥面上与该 (y,z) 对应的点在 x = ρ/k − L
+    const rho=Math.hypot(u-pipe.e, -v-pipe.z0);
+    const k=coneK()||1e-6;
+    return [Math.max(-pipe.L, Math.min(pipe.L, rho/k-pipe.L)), u, -v];
   }
   if(view==='front') return [-u, pipe.e, -v];
   if(view==='top')   return [-u, -v, pipe.z0];
@@ -1959,6 +2094,7 @@ function insideSolid(p, key){
   }
   if(Math.abs(p[0])>=pipe.L) return false;
   const dy=p[1]-pipe.e, dz=p[2]-pipe.z0;
+  if(pipe.type==='cone') return Math.hypot(dy,dz) < coneK()*(p[0]+pipe.L);
   return dy*dy+dz*dz < pipe.R*pipe.R;
 }
 
@@ -2061,12 +2197,18 @@ function paintOrthoView(ctx, key, M, sc){
   outline(A.poly,'B','rgba(150,184,230,.66)');
   outline(B.poly,'A','rgba(210,180,126,.58)');
 
-  // 主体的内孔：俯视正对孔口，画实线；主视 / 左视看不到孔壁，按国标画虚线，遇从体断开
+  // 孔口：正对筒口时是看得见的棱线（实线），侧看时按国标画虚线
   if(A.bore){
     ctx.beginPath();
     A.bore.forEach((p,i)=>{ const q=M(p[0],p[1]); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
     ctx.closePath();
     ctx.strokeStyle='rgba(150,184,230,.55)'; ctx.lineWidth=1.1; ctx.stroke();
+  }
+  if(B && B.bore){
+    ctx.beginPath();
+    B.bore.forEach((p,i)=>{ const q=M(p[0],p[1]); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
+    ctx.closePath();
+    ctx.strokeStyle='rgba(210,180,126,.5)'; ctx.lineWidth=1.1; ctx.stroke();
   }
   if(hollowMain() && key!=='top'){
     const rr=Math.min(PIPE_A.r, PIPE_A.R-0.01);
@@ -2086,11 +2228,32 @@ function paintOrthoView(ctx, key, M, sc){
     }
     ctx.restore();
   }
+  // 从体内孔的两条转向轮廓线：平行于从体轴线，被管壁包住，按虚线画
+  if(hollowCross() && key!=='left'){
+    const rc=Math.min(pipe.r, pipe.R-0.01);
+    const offs = key==='front'
+      ? [[pipe.e, pipe.z0+rc],[pipe.e, pipe.z0-rc]]
+      : [[pipe.e+rc, pipe.z0],[pipe.e-rc, pipe.z0]];
+    ctx.save();
+    ctx.setLineDash([3,3.2]);
+    ctx.strokeStyle='rgba(210,180,126,.40)'; ctx.lineWidth=1;
+    for(const [yy,zz] of offs){
+      const v = key==='front' ? -zz : -yy;
+      ctx.beginPath();
+      for(let i=0;i<=64;i++){
+        const x=-pipe.L+2*pipe.L*i/64;
+        const q=M(-x, v);
+        i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   // 相贯线的投影：先画不可见段（虚线），再画可见段，避免两半重合时被覆盖
   const segs={vis:[],hid:[]};
   for(const c of pipeCurves){
-    const P=c.pts.map(p=>{ const [u,v]=fr.uv(p); const q=M(u,v); q.vis=curveVisibleAt(p,fr.dir,c.side); return q; });
+    const P=c.pts.map(p=>{ const [u,v]=fr.uv(p); const q=M(u,v); q.vis=curveVisibleAt(p,fr.dir,c); return q; });
     if(P.length<2) continue;
     let i=0;
     while(i<P.length-1){
@@ -2116,17 +2279,25 @@ function paintOrthoView(ctx, key, M, sc){
   }
 }
 
-/* 相贯线判型 */
+/* 相贯线判型。两个立体都可能是圆筒，所以先按「主体的哪层壁 × 从体的哪层壁」
+   把曲线分四组统计，再按情形给出说法。 */
 function classifyPierce(){
-  const R1=PIPE_A.R, R2=pipe.R;
+  const R1=PIPE_A.R, R2=pipe.R, ri=PIPE_A.r, rc=pipe.r;
   const branches=pipeCurves.length;
+  const hm=hollowMain(), hc=hollowCross();
+  const geo = pipe.type==='sphere'?'球':pipe.type==='cone'?'圆锥':'圆柱';
+  const cnt=(mi,ci)=>pipeCurves.filter(c=>(!!c.mIn)===mi&&(!!c.cIn)===ci).length;
+  const oo=cnt(false,false), oi=cnt(false,true), io=cnt(true,false), ii=cnt(true,true);
+
   if(!branches){
-    const why = pipe.type==='sphere' && R2<=R1
-      ? (hollowMain() && R2<=PIPE_A.r
-          ? `球半径 R₂ = ${R2.toFixed(2)} 不大于内孔半径 r₁ = ${PIPE_A.r.toFixed(2)}，球整个悬在内孔里，两张壁都不与它相交`
-          : `球半径 R₂ = ${R2.toFixed(2)} ≤ 主体外半径 R₁ = ${R1.toFixed(2)}，球整个含在圆筒壁内，两表面不相交`)
-      : '当前参数下两立体表面没有公共点';
-    return {name:'无相贯线', rule:why, size:'—', note:'调整从体半径或轴线位置，让两个表面真正相交。'};
+    let why='当前参数下两个立体的表面没有公共点';
+    if(pipe.type==='sphere'){
+      if(hm && R2<=ri) why=`球半径 R₂ = ${R2.toFixed(2)} 不大于内孔半径 r₁ = ${ri.toFixed(2)}，球整个悬在内孔里，两层壁都不与它相交`;
+      else if(R2<=R1) why=`球半径 R₂ = ${R2.toFixed(2)} ≤ 主体外半径 R₁ = ${R1.toFixed(2)}，球整个含在${hm?'圆筒壁内':'圆柱内部'}，两表面不相交`;
+    }else if(pipe.type==='cone'){
+      why=`圆锥太瘦：锥面在主体范围内没触到${hm?'外壁或内壁':'圆柱面'}。加大底圆半径 R₂，或把轴线移到锥体较粗的一段`;
+    }
+    return {name:'无相贯线', rule:why, size:'—', note:'调整半径或轴线位置，让两个表面真正相交。'};
   }
   let zmin=Infinity, zmax=-Infinity, total=0;
   for(const c of pipeCurves) for(const p of c.pts){
@@ -2135,13 +2306,25 @@ function classifyPierce(){
     total++;
   }
   const span=zmax-zmin;
+  const zr=`z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)}`;
   const eq=Math.abs(R2-R1)<0.02;
   const centered=Math.abs(pipe.e)<0.02;
 
-  if(hollowMain()){
-    const ri=PIPE_A.r, t=R1-ri, geo = pipe.type==='sphere' ? '球' : '圆柱';
-    const outN=pipeCurves.filter(c=>c.side!=='in').length, inN=branches-outN;
-    if(pipe.type==='sphere' && centered){
+  /* ---------- 圆锥（主体按实心圆柱计算） ---------- */
+  if(pipe.type==='cone'){
+    const ang=(Math.atan(coneK())*180/Math.PI).toFixed(1);
+    const n=pipeCurves.filter(c=>!c.mIn).length;
+    return {
+      name: n===1 ? '一条空间曲线' : (n===2 ? '两条闭合空间曲线' : `${n} 条闭合空间曲线`),
+      rule:`圆锥轴线水平、与圆柱轴线垂直相交：锥顶在 x = −${pipe.L.toFixed(2)}，底圆半径 R₂ = ${R2.toFixed(2)} 在 x = +${pipe.L.toFixed(2)}，半顶角 ${ang}°。锥面与圆柱面 R₁ = ${R1.toFixed(2)} 相交，得 ${n} 条曲线`,
+      size:`支数 ${n} · ${zr} · 跨度 ${span.toFixed(2)}`,
+      note:'锥面半径沿轴线线性变化，曲线在锥顶一侧弯得急、靠底圆一侧平缓，左右不对称，不能按对称性省一半作图；最高、最低点由锥面母线与圆柱转向轮廓线的交点定出。'
+    };
+  }
+
+  /* ---------- 球 ---------- */
+  if(pipe.type==='sphere'){
+    if(hm && centered){
       const hO = R2>R1 ? Math.sqrt(R2*R2-R1*R1) : null;
       const hI = R2>ri ? Math.sqrt(R2*R2-ri*ri) : null;
       const parts=[];
@@ -2150,35 +2333,10 @@ function classifyPierce(){
       return {
         name:(hO!==null&&hI!==null) ? '两对平行的圆' : '一对平行的圆',
         rule:`球心在主体轴线上，球与同轴圆柱面相交必为圆：${parts.join('；')}`,
-        size:`支数 ${branches}（外 ${outN} / 内 ${inN}）· 壁厚 t = ${t.toFixed(2)}`,
+        size:`支数 ${branches}（外 ${oo} / 内 ${io}）· 壁厚 t = ${(R1-ri).toFixed(2)}`,
         note:'同轴相贯是唯一能得到平面曲线的情形；俯视图上这些圆都积聚成圆，与外壁、内孔两个圆重合。'
       };
     }
-    if(inN===0){
-      return {
-        name:'两条闭合空间曲线',
-        rule:`主体是纵向圆筒（R₁ = ${R1.toFixed(2)}，r₁ = ${ri.toFixed(2)}），从体${geo}（R₂ = ${R2.toFixed(2)}）整个落在内孔里，碰不到内壁 → 只有外壁上的两条曲线`,
-        size:`支数 ${branches} · 壁厚 t = ${t.toFixed(2)} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)}`,
-        note:`内孔比从体粗，内壁没被切到。把空心半径 r₁ 调到小于 ${R2.toFixed(2)}，内壁上会再出现两条相贯线。`
-      };
-    }
-    if(outN===0){
-      return {
-        name:'内壁上的两条曲线',
-        rule:`从体${geo}（R₂ = ${R2.toFixed(2)}）比主体外半径小，穿不透外壁，只在内孔（r₁ = ${ri.toFixed(2)}）的壁上切出两条曲线`,
-        size:`支数 ${branches}（内 ${inN}）· 壁厚 t = ${t.toFixed(2)} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)}`,
-        note:'从体整个躲在壁厚之内，画出来只有内壁那一圈；把从体半径调大到超过 R₁ 才会切穿外壁。'
-      };
-    }
-    return {
-      name:'内外各两条闭合曲线',
-      rule:`主体是纵向圆筒（R₁ = ${R1.toFixed(2)}，r₁ = ${ri.toFixed(2)}）：从体${geo}（R₂ = ${R2.toFixed(2)}）把外壁、内壁各穿出一个孔 → 外壁 ${outN} 条、内壁 ${inN} 条，共 ${branches} 条`,
-      size:`支数 ${branches}（外 ${outN} / 内 ${inN}）· 壁厚 t = ${t.toFixed(2)} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)}`,
-      note:'内壁半径小，投影上那两条曲线嵌在外圈之内；作图时内外分别求点：外圈按 R₁、内圈按 r₁ 定最高最低点。'
-    };
-  }
-
-  if(pipe.type==='sphere'){
     if(centered){
       const h=Math.sqrt(Math.max(0,R2*R2-R1*R1));
       return {
@@ -2191,8 +2349,53 @@ function classifyPierce(){
     return {
       name:`${branches===1?'一条':'两条'}闭合空间曲线`,
       rule:`球心偏离圆柱轴线（e = ${pipe.e.toFixed(2)}），两曲面不同轴 → 相贯线不再是平面曲线；${branches===1?'两段曲线在球面上相接，合并成一条非对称的闭合曲线':'两支闭合的空间曲线彼此分离'}`,
-      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)}`,
+      size:`支数 ${branches}${hm?`（外 ${oo} / 内 ${io}）`:''} · ${zr} · 跨度 ${span.toFixed(2)}`,
       note:'球心一旦偏离轴线，相贯线立刻失去对称性；作图需先求各支的最高、最低点。'
+    };
+  }
+
+  /* ---------- 圆柱 × 圆柱，从体是圆筒 ---------- */
+  if(hc){
+    const t2=(R2-rc).toFixed(2);
+    const parts=[];
+    if(oo) parts.push(`外壁 × 外壁 ${oo} 条`);
+    if(oi) parts.push(`外壁 × 从体内孔 ${oi} 条`);
+    if(io) parts.push(`内壁 × 外壁 ${io} 条`);
+    if(ii) parts.push(`内壁 × 从体内孔 ${ii} 条`);
+    return {
+      name: hm ? '四组壁面各交出曲线' : '外壁与外孔两组曲线',
+      rule: hm
+        ? `主体是纵向圆筒（R₁ = ${R1.toFixed(2)}，r₁ = ${ri.toFixed(2)}），从体是横向圆筒（R₂ = ${R2.toFixed(2)}，r₂ = ${rc.toFixed(2)}）：四张圆柱面两两相交 → ${parts.join('、')}，共 ${branches} 条`
+        : `主体是实心圆柱（R₁ = ${R1.toFixed(2)}），从体是横向圆筒（R₂ = ${R2.toFixed(2)}，r₂ = ${rc.toFixed(2)}）：柱面与外壁交一组、与内孔壁交一组 → ${parts.join('、')}，共 ${branches} 条`,
+      size:`支数 ${branches}${hm?`（外 ${oo+oi} / 内 ${io+ii}）`:''} · 从体壁厚 t₂ = ${t2} · ${zr}`,
+      note:'每组曲线的求法与单层壁完全一样，只是把主体、从体的半径换成那一层壁的半径；投影上外孔那圈在外、内孔那圈嵌在里面，被管壁挡住的一段画虚线。'
+    };
+  }
+
+  /* ---------- 圆柱 × 圆柱，从体实心、主体圆筒 ---------- */
+  if(hm){
+    const t=R1-ri;
+    if(io===0 && ii===0){
+      return {
+        name:'两条闭合空间曲线',
+        rule:`主体是纵向圆筒（R₁ = ${R1.toFixed(2)}，r₁ = ${ri.toFixed(2)}），从体圆柱（R₂ = ${R2.toFixed(2)}）整个落在内孔里，碰不到内壁 → 只有外壁上的两条曲线`,
+        size:`支数 ${branches} · 壁厚 t = ${t.toFixed(2)} · ${zr} · 跨度 ${span.toFixed(2)}`,
+        note:`内孔比从体粗，内壁没被切到。把空心半径 r₁ 调到小于 ${R2.toFixed(2)}，内壁上会再出现两条相贯线。`
+      };
+    }
+    if(oo===0){
+      return {
+        name:'内壁上的两条曲线',
+        rule:`从体圆柱（R₂ = ${R2.toFixed(2)}）比主体外半径小，穿不透外壁，只在内孔（r₁ = ${ri.toFixed(2)}）的壁上切出两条曲线`,
+        size:`支数 ${branches}（内 ${io}）· 壁厚 t = ${t.toFixed(2)} · ${zr}`,
+        note:'从体整个躲在壁厚之内，画出来只有内壁那一圈；把从体半径调大到超过 R₁ 才会切穿外壁。'
+      };
+    }
+    return {
+      name:'内外各两条闭合曲线',
+      rule:`主体是纵向圆筒（R₁ = ${R1.toFixed(2)}，r₁ = ${ri.toFixed(2)}）：从体圆柱（R₂ = ${R2.toFixed(2)}）把外壁、内壁各穿出一个孔 → 外壁 ${oo} 条、内壁 ${io} 条，共 ${branches} 条`,
+      size:`支数 ${branches}（外 ${oo} / 内 ${io}）· 壁厚 t = ${t.toFixed(2)} · ${zr}`,
+      note:'内壁半径小，投影上那两条曲线嵌在外圈之内；作图时内外分别求点：外圈按 R₁、内圈按 r₁ 定最高最低点。'
     };
   }
 
@@ -2200,7 +2403,7 @@ function classifyPierce(){
     return {
       name:'一条闭合空间曲线',
       rule:'两圆柱轴线偏交（e ≠ 0，两轴线不相交）→ 两条交线在此处相接，合并为一条非对称的闭合曲线',
-      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)}`,
+      size:`支数 ${branches} · ${zr} · 跨度 ${span.toFixed(2)}`,
       note:'偏交时相贯线左右不对称，不能再用对称性省一半作图。'
     };
   }
@@ -2208,14 +2411,14 @@ function classifyPierce(){
     return {
       name:'两条平面曲线',
       rule:`两圆柱直径相等（R₁ = R₂ = ${R1.toFixed(2)}）且轴线正交相交 → 相贯线落在两个对称平面内，是两条椭圆；在轴线所决定的投影面上，它们的投影退化为两条相交直线`,
-      size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)}`,
+      size:`支数 ${branches} · ${zr}`,
       note:'等径正交是相贯线的特例：教材里说的「两条相交直线」指的是投影，空间中是两条平面曲线（椭圆）。'
     };
   }
   return {
     name:'两条闭合空间曲线',
     rule:`两圆柱不等径正交（R₂ = ${R2.toFixed(2)} < R₁ = ${R1.toFixed(2)}）→ 水平圆柱从主体一侧进、另一侧出，各留下一个孔，孔口边界就是两条空间曲线；曲线总是弯向大圆柱的轴线`,
-    size:`支数 ${branches} · z 范围 ${zmin.toFixed(2)} ~ ${zmax.toFixed(2)} · 跨度 ${span.toFixed(2)} · 采样点 ${total}`,
+    size:`支数 ${branches} · ${zr} · 跨度 ${span.toFixed(2)} · 采样点 ${total}`,
     note:'四条转向轮廓线上的点是作图起点：先定最高点、最低点和左右最宽处，再连光滑曲线。'
   };
 }
@@ -2237,16 +2440,20 @@ function refreshPierce(){
   document.getElementById('pcSpan').textContent=pipeCurves.length?(zmax-zmin).toFixed(2):'—';
   document.getElementById('pcPts').textContent=total||'—';
 
-  const geo = pipe.type==='sphere' ? '球' : '圆柱';
+  const geo = pipe.type==='sphere' ? '球' : pipe.type==='cone' ? '圆锥'
+            : hollowCross() ? '空心圆柱' : '圆柱';
   const main = hollowMain() ? '空心圆柱' : '圆柱';
   document.getElementById('shapeName').textContent=`${main} ∩ ${geo}`;
-  document.getElementById('shapeKicker').textContent = pipe.type==='sphere'
-    ? 'INTERSECTION · CYLINDER × SPHERE'
-    : hollowMain() ? 'INTERSECTION · TUBE × CYLINDER' : 'INTERSECTION · CYLINDER × CYLINDER';
+  const kMain = hollowMain() ? 'TUBE' : 'CYLINDER';
+  const kCross = pipe.type==='sphere' ? 'SPHERE' : pipe.type==='cone' ? 'CONE'
+               : hollowCross() ? 'TUBE' : 'CYLINDER';
+  document.getElementById('shapeKicker').textContent = `INTERSECTION · ${kMain} × ${kCross}`;
   const wall = hollowMain()
     ? ` · 内孔 r₁ ${PIPE_A.r.toFixed(2)} · 壁厚 ${(PIPE_A.R-PIPE_A.r).toFixed(2)}` : '';
+  const wall2 = hollowCross()
+    ? ` · 从体内孔 r₂ ${pipe.r.toFixed(2)} · 壁厚 ${(pipe.R-pipe.r).toFixed(2)}` : '';
   document.getElementById('shapeMeta').textContent =
-    `主体 R₁ ${PIPE_A.R.toFixed(2)}${wall} · 从体 R₂ ${pipe.R.toFixed(2)} · z₀ ${pipe.z0.toFixed(2)} · e ${pipe.e.toFixed(2)}`;
+    `主体 R₁ ${PIPE_A.R.toFixed(2)}${wall} · 从体 R₂ ${pipe.R.toFixed(2)}${wall2} · z₀ ${pipe.z0.toFixed(2)} · e ${pipe.e.toFixed(2)}`;
 
   drawOrtho();
   markDirty();
@@ -2734,7 +2941,7 @@ function syncSliders(){
 /* ---------- 相贯线面板 ---------- */
 function buildPipeUI(){
   const box=document.getElementById('pipeGrid');
-  box.innerHTML = [['cylinder','圆柱'],['sphere','球']].map(([k,label])=>`
+  box.innerHTML = [['cylinder','圆柱'],['cone','圆锥'],['sphere','球']].map(([k,label])=>`
     <button class="solid-btn${pipe.type===k?' on':''}" data-pipe="${k}">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg>
       <i>${label}</i>
@@ -2748,40 +2955,68 @@ function buildPipeUI(){
     b.onclick=()=>switchMode(b.dataset.mode);
   });
 
-  ['mainR','pipeR','pipeZ','pipeE'].forEach(id=>{
+  ['mainR','pipeR','pipeInner','pipeZ','pipeE'].forEach(id=>{
     const el=document.getElementById(id);
     el.addEventListener('input',()=>{
       if(id==='mainR') PIPE_A.r=Math.min(+el.value, PIPE_A.R-0.05);
-      if(id==='pipeR') pipe.R=+el.value;
+      if(id==='pipeR'){ pipe.R=+el.value; syncCrossLimit(); }
+      if(id==='pipeInner') pipe.r=+el.value;
       if(id==='pipeZ') pipe.z0=+el.value;
       if(id==='pipeE') pipe.e=+el.value;
       syncPipeVals();
       refreshPierce();
     });
   });
+  syncCrossLimit();
   syncPipeVals();
+}
+
+/* 从体内孔半径必须小于外半径：滑杆上限跟着 R₂ 走，R₂ 调小时把 r₂ 一起压下来，
+   否则会得到壁厚为零甚至为负的管子。 */
+function crossInnerMax(){ return Math.max(0.10, +(pipe.R-0.06).toFixed(2)); }
+function syncCrossLimit(){
+  const el=document.getElementById('pipeInner');
+  if(!el) return;
+  el.max=crossInnerMax();
+  if(pipe.r>crossInnerMax()) pipe.r=crossInnerMax();
+  el.value=pipe.r;
 }
 
 function syncPipeVals(){
   document.getElementById('mainR').value=PIPE_A.r;
   document.getElementById('mainRVal').textContent=PIPE_A.r.toFixed(2);
   document.getElementById('mainWallVal').textContent=(PIPE_A.R-PIPE_A.r).toFixed(2);
-  document.getElementById('mainShapeName').textContent = hollowMain() ? '纵向空心圆柱' : '实心圆柱';
+  document.getElementById('mainShapeName').textContent = pipe.type==='cone' ? '实心圆柱'
+    : hollowMain() ? '纵向空心圆柱' : '实心圆柱';
+  document.getElementById('mainInnerWrap').classList.toggle('hidden-block', pipe.type==='cone');
   document.getElementById('pipeRVal').textContent=pipe.R.toFixed(2);
   document.getElementById('pipeZVal').textContent=pipe.z0.toFixed(2);
   document.getElementById('pipeEVal').textContent=pipe.e.toFixed(2);
+  const rc=Math.min(pipe.r, crossInnerMax());
+  document.getElementById('pipeInnerVal').textContent=rc.toFixed(2);
+  document.getElementById('pipeWallVal').textContent=(pipe.R-rc).toFixed(2);
+  document.getElementById('crossInnerWrap').classList.toggle('hidden-block', pipe.type!=='cylinder');
 }
 
 function setPipeType(t){
+  const prev=pipe.type;
+  if(t==='cone' && PIPE_A.r>0.01) savedMainR=PIPE_A.r;   // 换回圆柱时把主体的空心半径还回去
   pipe.type=t;
-  pipe.R = (t==='sphere') ? 1.25 : 0.62;
-  document.getElementById('pipeR').value=pipe.R;
+  pipe.R = t==='sphere' ? 1.25 : t==='cone' ? 1.90 : 0.62;
+  const rEl=document.getElementById('pipeR');
+  rEl.max = t==='cone' ? 2.40 : 1.55;      // 圆锥又细又长，底圆要更大才能穿透主体
+  rEl.value=pipe.R;
+  // 圆锥只与实心主体相贯：锥面与圆筒内壁那一组不在这里做
+  if(t==='cone'){ PIPE_A.r=0; document.getElementById('mainR').value=0; }
+  else if(prev==='cone'){ PIPE_A.r=savedMainR; document.getElementById('mainR').value=PIPE_A.r; }
   document.getElementById('pipeGrid').querySelectorAll('.solid-btn').forEach(b=>{
     b.classList.toggle('on', b.dataset.pipe===t);
   });
-  document.getElementById('pipeHint').textContent = t==='sphere'
-    ? '球心在 (0, e, z₀)。球半径要大于主体外半径 R₁，两个表面才会相交；主体是圆筒时内壁也会被切出孔。'
-    : '从体轴线沿 x 方向，与主体轴线在 z₀ 高度相交；e ≠ 0 时两轴线错开。';
+  document.getElementById('pipeHint').textContent =
+    t==='sphere' ? '球心在 (0, e, z₀)。球半径要大于主体外半径 R₁，两个表面才会相交；主体是圆筒时内壁也会被切出孔。'
+    : t==='cone' ? '锥顶在 x = −L 一侧、底圆在 x = +L：R₂ 是底圆半径，锥面越往右越粗；主体此时按实心圆柱计算。'
+    : '从体轴线沿 x 方向，与主体轴线在 z₀ 高度相交；e ≠ 0 时两轴线错开。把从体空心半径 r₂ 调大，它也成为一根圆筒。';
+  syncCrossLimit();
   syncPipeVals();
   refreshPierce();
 }
